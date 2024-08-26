@@ -1,0 +1,7 @@
+[package]
+name = "gemini-tui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gemini-api = { path = "../gemini-api" }
