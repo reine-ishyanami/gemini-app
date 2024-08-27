@@ -7,6 +7,10 @@ edition = "2021"
 reqwest = { workspace = true }
 tokio = { workspace = true }
 tokio-macros = { workspace = true }
-anyhow = {workspace = true}
-serde = {workspace = true}
-serde_json = {workspace = true}
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+default = []
+blocking = ["reqwest/blocking"]

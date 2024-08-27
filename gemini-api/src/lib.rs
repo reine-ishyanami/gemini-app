@@ -1,5 +1,5 @@
-mod body;
-mod model;
+pub mod body;
+pub mod model;
 
 use anyhow::Result;
 use body::{GeminiRequestBody, GeminiResponseBody, GenerationConfig, Paragraph, Part, Role};

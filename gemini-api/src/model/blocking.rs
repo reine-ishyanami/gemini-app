@@ -1,30 +1,16 @@
-use std::{fmt, sync::Mutex};
+use std::sync::Mutex;
 
 use anyhow::Result;
-use reqwest::Client;
+use reqwest::blocking::Client;
 use serde_json;
 
 use crate::body::{GeminiRequestBody, GeminiResponseBody, GenerationConfig, Paragraph, Part, Role};
 
-pub enum LanguageModel {
-    Gemini1_0Pro,
-    Gemini1_5Pro,
-    Gemini1_5Flash,
-}
-
-impl fmt::Display for LanguageModel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LanguageModel::Gemini1_0Pro => write!(f, "gemini-1.0-pro"),
-            LanguageModel::Gemini1_5Pro => write!(f, "gemini-1.5-pro"),
-            LanguageModel::Gemini1_5Flash => write!(f, "gemini-1.5-flash"),
-        }
-    }
-}
+use super::LanguageModel;
 
 pub struct Gemini {
-    key: String,
-    url: String,
+    pub key: String,
+    pub url: String,
     pub contents: Mutex<Vec<Paragraph>>,
     client: Client,
     pub options: GenerationConfig,
@@ -33,6 +19,7 @@ pub struct Gemini {
 impl Gemini {
     const GEMINI_API_URL: &'static str = "https://generativelanguage.googleapis.com/v1beta/models/";
 
+    /// 创建新实例
     pub fn new(key: String, model: LanguageModel) -> Self {
         let client = Client::new();
         let contents = Mutex::new(Vec::new());
@@ -46,12 +33,26 @@ impl Gemini {
         }
     }
 
+    /// 重建实例
+    pub fn rebuild(key: String, url: String, contents: Vec<Paragraph>, options: GenerationConfig) -> Self {
+        let client = Client::new();
+        let contents = Mutex::new(contents);
+        Self {
+            key,
+            url,
+            contents,
+            client,
+            options,
+        }
+    }
+
+    /// 参数配置
     pub fn set_options(&mut self, options: GenerationConfig) {
         self.options = options;
     }
 
-    /// 单次对话
-    pub async fn chat_once(&self, content: String) -> Result<String> {
+    /// 异步单次对话
+    pub fn chat_once(&self, content: String) -> Result<String> {
         // 创建一个客户端实例
         let url = format!("{}?key={}", self.url, self.key);
         let body = GeminiRequestBody {
@@ -68,9 +69,8 @@ impl Gemini {
             .post(url)
             .header("Content-Type", "Application/json")
             .body(body_json)
-            .send()
-            .await?;
-        let response_text = response.text().await?;
+            .send()?;
+        let response_text = response.text()?;
         // 解析响应内容
         let response_json: GeminiResponseBody = serde_json::from_str(&response_text)?;
 
@@ -78,8 +78,8 @@ impl Gemini {
         Ok(response_text)
     }
 
-    /// 连续对话
-    pub async fn chat_conversation(&mut self, content: String) -> Result<String> {
+    /// 异步连续对话
+    pub fn chat_conversation(&mut self, content: String) -> Result<String> {
         let mut contents = self.contents.lock().unwrap();
         contents.push(Paragraph {
             role: Role::User,
@@ -98,9 +98,8 @@ impl Gemini {
             .post(url)
             .header("Content-Type", "Application/json")
             .body(body_json)
-            .send()
-            .await?;
-        let response_text = response.text().await?;
+            .send()?;
+        let response_text = response.text()?;
         // 解析响应内容
         let response_json: GeminiResponseBody = serde_json::from_str(&response_text)?;
 
