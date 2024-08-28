@@ -1,11 +1,12 @@
 #[cfg(feature = "blocking")]
 pub mod blocking;
 
-use std::{fmt, sync::Mutex};
+use std::fmt;
 
 use anyhow::Result;
 use reqwest::Client;
 use serde_json;
+use tokio::sync::Mutex;
 
 use crate::body::{GeminiRequestBody, GeminiResponseBody, GenerationConfig, Paragraph, Part, Role};
 
@@ -98,7 +99,7 @@ impl Gemini {
 
     /// 异步连续对话
     pub async fn chat_conversation(&mut self, content: String) -> Result<String> {
-        let mut contents = self.contents.lock().unwrap();
+        let mut contents = self.contents.lock().await;
         contents.push(Paragraph {
             role: Role::User,
             parts: vec![Part { text: content }],

@@ -10,3 +10,4 @@ anyhow = "1.0.86"  # 错误处理库
 serde = { version = "1.0", features = ["derive"] }  # 序列化/反序列化库
 serde_json = "1.0.127"  # 序列化/反序列化库
 ratatui = "0.28.1"  # 终端UI库
+crossterm = "0.28.1"  # 跨平台终端库

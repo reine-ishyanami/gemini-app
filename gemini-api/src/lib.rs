@@ -4,7 +4,6 @@ pub mod model;
 use anyhow::Result;
 use body::{GeminiRequestBody, GeminiResponseBody, GenerationConfig, Paragraph, Part, Role};
 use reqwest::Client;
-use serde_json;
 
 const GEMINI_API_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
 
@@ -67,7 +66,7 @@ mod tests {
         assert!(key.is_ok());
         let content = "Write Hello World with Rust Programming Language".to_owned();
         let response = chat_once(content, key.unwrap()).await?;
-        assert!(response.len() > 0);
+        assert!(!response.is_empty());
         println!("Response: {}", response);
         Ok(())
     }
@@ -79,11 +78,11 @@ mod tests {
         let mut client = Gemini::new(key.unwrap(), LanguageModel::Gemini1_5Flash);
         let req1 = "My Name is Reine".to_owned();
         let resp1 = client.chat_conversation(req1.clone()).await?;
-        assert!(resp1.len() > 0);
+        assert!(!resp1.is_empty());
         println!("{}: {}", req1, resp1);
         let req2 = "Who am I".to_owned();
         let resp2 = client.chat_conversation(req2.clone()).await?;
-        assert!(resp2.len() > 0);
+        assert!(!resp2.is_empty());
         println!("{}: {}", req2, resp2);
         Ok(())
     }
