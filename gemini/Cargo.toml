@@ -7,4 +7,3 @@ edition = "2021"
 gemini-api = { path = "../gemini-api", features = ["blocking"]}
 ratatui ={ workspace = true }
 anyhow = { workspace = true }
-crossterm ={ workspace = true }
