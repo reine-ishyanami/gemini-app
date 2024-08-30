@@ -1,3 +1,5 @@
+use std::sync::mpsc;
+
 use anyhow::Result;
 use chrono::Local;
 use gemini_api::body::GenerationConfig;
@@ -99,19 +101,34 @@ impl From<&ChatMessage> for ListItem<'_> {
 impl UI {
     /// 启动UI
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
+        let (tx, rx) = mpsc::channel();
         self.init_gemini_api(None);
         while !self.should_exit {
             terminal.draw(|frame| self.draw(frame))?;
             if let Event::Key(key) = event::read()? {
-                self.handle_key(key);
+                self.handle_key(key, tx.clone(), &rx);
             };
         }
         Ok(())
     }
 
     /// 处理按键事件
-    fn handle_key(&mut self, key: KeyEvent) {
+    fn handle_key(&mut self, key: KeyEvent, tx: mpsc::Sender<String>, rx: &mpsc::Receiver<String>) {
         if self.receiving_message {
+            if let Ok(request) = rx.recv() {
+                let response = self.gemini.as_mut().unwrap().chat_conversation(request).unwrap();
+                let response = if response.ends_with("\n") {
+                    response[..response.len() - 1].to_owned()
+                } else {
+                    response
+                };
+                self.chat_history.push(ChatMessage {
+                    sender: Bot,
+                    message: response,
+                    date_time: Local::now(),
+                });
+                self.receiving_message = false;
+            }
             return;
         }
         if key.kind != KeyEventKind::Press {
@@ -119,7 +136,7 @@ impl UI {
         }
         match key.code {
             event::KeyCode::Backspace => self.delete_pre_char(),
-            event::KeyCode::Enter => self.submit_message(),
+            event::KeyCode::Enter => self.submit_message(tx),
             event::KeyCode::Left => self.move_cursor_left(self.get_current_char()),
             event::KeyCode::Right => self.move_cursor_right(self.get_next_char()),
             event::KeyCode::Up => {}
@@ -226,7 +243,6 @@ impl UI {
     fn delete_suf_char(&mut self) {
         let is_not_cursor_rightmost = self.cursor_index != self.input_buffer.chars().count();
         if is_not_cursor_rightmost {
-            // let delete_char = self.get_next_char();
             let current_index = self.cursor_index;
             let from_left_to_current_index = current_index + 1;
             let before_char_to_delete = self.input_buffer.chars().take(current_index);
@@ -247,7 +263,7 @@ impl UI {
     }
 
     /// 提交消息
-    fn submit_message(&mut self) {
+    fn submit_message(&mut self, tx: mpsc::Sender<String>) {
         if !self.input_buffer.is_empty() {
             if self.gemini.is_none() {
                 self.init_gemini_api(Some(self.input_buffer.clone()));
@@ -257,22 +273,24 @@ impl UI {
                     message: self.input_buffer.clone(),
                     date_time: Local::now(),
                 });
-                let response = self
-                    .gemini
-                    .as_mut()
-                    .unwrap()
-                    .chat_conversation(self.input_buffer.clone())
-                    .unwrap();
-                let response = if response.ends_with("\n") {
-                    response[..response.len() - 1].to_owned()
-                } else {
-                    response
-                };
-                self.chat_history.push(ChatMessage {
-                    sender: Bot,
-                    message: response,
-                    date_time: Local::now(),
-                });
+                self.receiving_message = true;
+                let _ = tx.send(self.input_buffer.clone());
+                // let response = self
+                //     .gemini
+                //     .as_mut()
+                //     .unwrap()
+                //     .chat_conversation(self.input_buffer.clone())
+                //     .unwrap();
+                // let response = if response.ends_with("\n") {
+                //     response[..response.len() - 1].to_owned()
+                // } else {
+                //     response
+                // };
+                // self.chat_history.push(ChatMessage {
+                //     sender: Bot,
+                //     message: response,
+                //     date_time: Local::now(),
+                // });
             }
             self.input_buffer.clear();
             self.reset_cursor();
@@ -341,11 +359,17 @@ impl UI {
             .border_style(Style::default().fg(Color::Green))
             .borders(Borders::ALL);
         // 输入框内容
-        let text = if self.input_length() > input_area_width() && self.charactor_index > input_area_width() {
+        let mut text = if self.input_length() > input_area_width() && self.charactor_index > input_area_width() {
             self.sub_input_buffer(self.charactor_index - input_area_width(), self.charactor_index)
         } else {
             self.input_buffer.clone()
         };
+
+        // 如果处于等待消息接收状态，则显示等待提示
+        if self.receiving_message {
+            text = "Receiving message...".to_owned();
+        }
+
         let input_paragraph = Paragraph::new(text)
             .block(input_block)
             .style(Style::default().fg(Color::Yellow));
