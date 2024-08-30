@@ -1,5 +1,6 @@
 use anyhow::Result;
 use chrono::Local;
+use gemini_api::body::GenerationConfig;
 use gemini_api::model::blocking::Gemini;
 use gemini_api::model::LanguageModel;
 use ratatui::layout::Alignment;
@@ -10,13 +11,12 @@ use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, Event, KeyEvent, KeyEventKind},
     layout::{
-        Constraint::{Length, Min},
+        Constraint::{Fill, Length},
         Layout, Rect,
     },
     widgets::{Block, Borders, ListItem, Widget},
     DefaultTerminal,
 };
-use std::sync::mpsc::{self, Receiver, Sender};
 
 use crate::model::ChatMessage;
 use crate::model::Sender::{Bot, User};
@@ -41,9 +41,13 @@ impl From<&ChatMessage> for ListItem<'_> {
                 let mut lines = Vec::new();
                 let mut line_width = 0;
                 for line in message_lines {
-                    if line_width == 0 {
+                    let line = if line_width == 0 {
+                        let line = format!("{} 👤", line);
                         line_width = line.len();
-                    }
+                        line
+                    } else {
+                        line.to_owned()
+                    };
                     lines.push(
                         Line::from(format!("{:width$}", line, width = line_width))
                             .alignment(Alignment::Right)
@@ -53,7 +57,7 @@ impl From<&ChatMessage> for ListItem<'_> {
                 lines.push(
                     Line::from(value.date_time.format("%H:%M:%S").to_string())
                         .alignment(Alignment::Right)
-                        .style(Style::default().fg(Color::Blue)),
+                        .style(Style::default().fg(Color::Cyan)),
                 );
                 lines
             }
@@ -61,17 +65,26 @@ impl From<&ChatMessage> for ListItem<'_> {
                 let message = value.message.clone();
                 let message_lines = message.split("\n");
                 let mut lines = Vec::new();
+                let mut line_width = 0;
                 for line in message_lines {
+                    let line = if line_width == 0 {
+                        let line = format!("🤖 {}", line);
+                        line_width = line.len();
+                        line
+                    } else {
+                        let line = format!("   {}", line);
+                        line.to_owned()
+                    };
                     lines.push(
                         Line::from(line.to_string())
                             .alignment(Alignment::Left)
-                            .style(Style::default().fg(Color::Cyan)),
+                            .style(Style::default().fg(Color::Blue)),
                     );
                 }
                 lines.push(
                     Line::from(value.date_time.format("%H:%M:%S").to_string())
                         .alignment(Alignment::Left)
-                        .style(Style::default().fg(Color::Blue)),
+                        .style(Style::default().fg(Color::Cyan)),
                 );
                 lines
             }
@@ -83,28 +96,19 @@ impl From<&ChatMessage> for ListItem<'_> {
 impl UI {
     /// 启动UI
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        let (tx, rx) = mpsc::channel();
         self.init_gemini_api(None);
         while !self.should_exit {
             terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
             if let Event::Key(key) = event::read()? {
-                self.handle_key(key, tx.clone(), &rx);
+                self.handle_key(key);
             };
         }
         Ok(())
     }
 
     /// 处理按键事件
-    fn handle_key(&mut self, key: KeyEvent, _: Sender<String>, rx: &Receiver<String>) {
+    fn handle_key(&mut self, key: KeyEvent) {
         if self.receiving_message {
-            if let Ok(message) = rx.try_recv() {
-                self.chat_history.push(ChatMessage {
-                    sender: Bot,
-                    message,
-                    date_time: Local::now(),
-                });
-                self.receiving_message = false;
-            }
             return;
         }
         if key.kind != KeyEventKind::Press {
@@ -125,6 +129,22 @@ impl UI {
                         self.chat_history.push(ChatMessage {
                             sender: User,
                             message: self.input_buffer.clone(),
+                            date_time: Local::now(),
+                        });
+                        let response = self
+                            .gemini
+                            .as_mut()
+                            .unwrap()
+                            .chat_conversation(self.input_buffer.clone())
+                            .unwrap();
+                        let response = if response.ends_with("\n") {
+                            response[..response.len() - 1].to_owned()
+                        } else {
+                            response
+                        };
+                        self.chat_history.push(ChatMessage {
+                            sender: Bot,
+                            message: response,
                             date_time: Local::now(),
                         });
                     }
@@ -173,9 +193,19 @@ impl UI {
     /// 尝试通过读取环境变量信息初始化Gemini API
     pub fn init_gemini_api(&mut self, key: Option<String>) {
         if let Some(key) = key {
-            self.gemini = Some(Gemini::new(key, LanguageModel::Gemini1_5Flash))
+            let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
+            gemini.set_options(GenerationConfig {
+                maxOutputTokens: 2048,
+                ..GenerationConfig::default()
+            });
+            self.gemini = Some(gemini)
         } else if let Ok(key) = std::env::var("GEMINI_KEY") {
-            self.gemini = Some(Gemini::new(key, LanguageModel::Gemini1_5Flash))
+            let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
+            gemini.set_options(GenerationConfig {
+                maxOutputTokens: 2048,
+                ..GenerationConfig::default()
+            });
+            self.gemini = Some(gemini)
         }
     }
 }
@@ -193,7 +223,7 @@ impl Widget for &mut UI {
         } else {
             "Input Text"
         };
-        let [chat_area, input_area_area] = Layout::vertical([Min(5), Length(3)]).areas(area);
+        let [chat_area, input_area_area] = Layout::vertical([Fill(1), Length(3)]).areas(area);
         let chat_block = Block::default()
             .title("Chat")
             .border_style(Style::default().fg(Color::Blue))

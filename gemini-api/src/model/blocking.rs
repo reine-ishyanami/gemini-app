@@ -1,5 +1,3 @@
-use std::sync::Mutex;
-
 use anyhow::Result;
 use reqwest::blocking::Client;
 use serde_json;
@@ -8,10 +6,11 @@ use crate::body::{GeminiRequestBody, GeminiResponseBody, GenerationConfig, Parag
 
 use super::LanguageModel;
 
+#[derive(Clone)]
 pub struct Gemini {
     pub key: String,
     pub url: String,
-    pub contents: Mutex<Vec<Paragraph>>,
+    pub contents: Vec<Paragraph>,
     client: Client,
     pub options: GenerationConfig,
 }
@@ -22,7 +21,7 @@ impl Gemini {
     /// 创建新实例
     pub fn new(key: String, model: LanguageModel) -> Self {
         let client = Client::new();
-        let contents = Mutex::new(Vec::new());
+        let contents = Vec::new();
         let url = format!("{}{}:generateContent", Self::GEMINI_API_URL, model);
         Self {
             key,
@@ -36,7 +35,6 @@ impl Gemini {
     /// 重建实例
     pub fn rebuild(key: String, url: String, contents: Vec<Paragraph>, options: GenerationConfig) -> Self {
         let client = Client::new();
-        let contents = Mutex::new(contents);
         Self {
             key,
             url,
@@ -80,12 +78,11 @@ impl Gemini {
 
     /// 异步连续对话
     pub fn chat_conversation(&mut self, content: String) -> Result<String> {
-        let mut contents = self.contents.lock().unwrap();
-        contents.push(Paragraph {
+        self.contents.push(Paragraph {
             role: Role::User,
             parts: vec![Part { text: content }],
         });
-        let cloned_contents = contents.clone();
+        let cloned_contents = self.contents.clone();
         let url = format!("{}?key={}", self.url, self.key);
         let body = GeminiRequestBody {
             contents: cloned_contents,
@@ -104,7 +101,7 @@ impl Gemini {
         let response_json: GeminiResponseBody = serde_json::from_str(&response_text)?;
 
         let response_text = response_json.candidates[0].content.parts[0].text.clone();
-        contents.push(Paragraph {
+        self.contents.push(Paragraph {
             role: Role::Model,
             parts: vec![Part {
                 text: response_text.clone(),
