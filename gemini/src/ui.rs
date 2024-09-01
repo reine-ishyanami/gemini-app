@@ -22,7 +22,7 @@ use ratatui::{
 };
 
 use crate::model::ChatMessage;
-use crate::model::Sender::{Bot, User};
+use crate::model::Sender::{Bot, Split, User};
 
 /// 窗口UI
 #[derive(Default)]
@@ -71,6 +71,8 @@ pub struct ScrollProps {
     chat_history_area_height: u16,
     /// 最后一条记录的高度
     last_chat_history_height: u16,
+    /// 是否需要添加一条空记录
+    add_a_blank_line: bool,
 }
 
 impl From<&ChatMessage> for ListItem<'_> {
@@ -83,7 +85,11 @@ impl From<&ChatMessage> for ListItem<'_> {
                 let mut line_width = 0;
                 for line in message_lines {
                     let line = if line_width == 0 {
-                        let line = format!("{} 👤", line);
+                        let line = if value.success {
+                            format!("{}  👤", line)
+                        } else {
+                            format!("{}❌👤", line)
+                        };
                         line_width = line.chars().count();
                         line
                     } else {
@@ -129,6 +135,9 @@ impl From<&ChatMessage> for ListItem<'_> {
                 );
                 lines
             }
+            Split => {
+                vec![Line::from("   ".to_owned()).alignment(Alignment::Center)]
+            }
         };
         ListItem::new(lines)
     }
@@ -150,10 +159,18 @@ impl UI {
 
     /// 处理按键事件
     fn handle_key(&mut self, key: KeyEvent, tx: mpsc::Sender<String>, rx: &mpsc::Receiver<String>) {
+        if self.scroll_props.add_a_blank_line {
+            self.scroll_props.add_a_blank_line = false;
+            self.chat_history.push(ChatMessage {
+                success: true,
+                sender: Split,
+                message: String::new(),
+                date_time: Local::now(),
+            });
+            return;
+        }
         // 如果接收消息位为真
         if self.receiving_message {
-            // 滚动到最新的一条消息
-            self.scroll_props.scroll_offset = self.max_scroll_offset();
             // 阻塞接收消息
             if let Ok(request) = rx.recv() {
                 match self.gemini.as_mut().unwrap().chat_conversation(request) {
@@ -166,16 +183,24 @@ impl UI {
                             response
                         };
                         self.chat_history.push(ChatMessage {
+                            success: true,
                             sender: Bot,
                             message: response,
                             date_time: Local::now(),
                         });
+                        self.scroll_props.add_a_blank_line = true;
                     }
                     // 接收响应消息失败，将响应状态位改为失败，并提供错误信息
                     Err(e) => {
                         if let Some(msg) = e.downcast_ref::<String>() {
                             self.response_status = ResponseStatus::Failed(msg.clone());
+                        } else {
+                            self.response_status = ResponseStatus::Failed("Unknown Error".to_owned());
                         }
+                        // 将最后一条消息状态修改为失败
+                        let mut chat_message = self.chat_history.pop().unwrap();
+                        chat_message.success = false;
+                        self.chat_history.push(chat_message);
                     }
                 }
                 self.receiving_message = false;
@@ -339,12 +364,12 @@ impl UI {
 
     /// 提交消息
     fn submit_message(&mut self, tx: mpsc::Sender<String>) {
-        self.scroll_props.scroll_offset = self.max_scroll_offset();
         if !self.input_buffer.is_empty() {
             if self.gemini.is_none() {
                 self.init_gemini_api(Some(self.input_buffer.clone()));
             } else {
                 self.chat_history.push(ChatMessage {
+                    success: true,
                     sender: User,
                     message: self.input_buffer.clone(),
                     date_time: Local::now(),
@@ -355,6 +380,7 @@ impl UI {
             }
             self.input_buffer.clear();
             self.reset_cursor();
+            // 滚动到最新的一条消息
             self.scroll_props.scroll_offset = self.max_scroll_offset();
         }
     }
@@ -408,10 +434,10 @@ impl UI {
         // 这里 -2 的原因是因为输入框中具有两侧的的 1px 边框
         let input_area_width = || area.width as usize - 2;
         let [chat_area, input_area] = Layout::vertical([Fill(1), Length(3)]).areas(area);
-        // 聊天记录区域（顶部）
-        self.render_chat_area(frame, chat_area, chat_area_width);
         // 输入区域（底部）
         self.render_input_area(frame, input_area, input_area_width);
+        // 聊天记录区域（顶部）
+        self.render_chat_area(frame, chat_area, chat_area_width);
     }
 
     /// 渲染输入区域
@@ -484,7 +510,7 @@ impl UI {
                 // 对长文本进行插入换行符号
                 let mut line_width = 0;
                 for (_, c) in m.message.clone().char_indices() {
-                    if line_width > area_width {
+                    if line_width >= area_width {
                         message.push('\n');
                         line_width = 0;
                     }
@@ -494,11 +520,7 @@ impl UI {
                         line_width = 0;
                     }
                 }
-                ChatMessage {
-                    sender: m.sender.clone(),
-                    message,
-                    date_time: m.date_time,
-                }
+                ChatMessage { message, ..m.clone() }
             })
             .map(|m| (&m).into())
             .collect();
@@ -510,42 +532,43 @@ impl UI {
             .block(Block::default().borders(Borders::LEFT | Borders::RIGHT | Borders::TOP))
             .style(Style::default().fg(Color::White));
 
-        // 滚动条渲染
+        let chat_area_width = chat_area.width;
+        let chat_area_height = chat_area.height;
+
         // 聊天区域高度，如果大于聊天记录区域高度，则显示聊天记录区域高度（可能有问题）TODO
-        let height = if chat_area.height > self.scroll_props.chat_history_area_height {
-            chat_area.height
+        let height = if chat_area_height > self.scroll_props.chat_history_area_height {
+            chat_area_height
         } else {
+            // 滚动到最新的一条消息
             self.scroll_props.chat_history_area_height
         };
-        // let height = chat_area.height;
         // 这块区域将不会被实际渲染
-        let chat_list_full_area = Rect::new(0, 0, chat_area.width, height);
+        let chat_list_full_area = Rect::new(0, 0, chat_area_width, height);
         let mut chat_list_full_area_buf = Buffer::empty(chat_list_full_area);
 
-        // 将列表内容渲染到这块区域中
+        // 将所有列表内容渲染到这块区域中
         Widget::render(chat_list, chat_list_full_area, &mut chat_list_full_area_buf);
-        let buf = frame.buffer_mut();
-
-        // frame.render_buffer(chat_area.x, chat_area.y, &chat_list_full_area_buf);
 
         let visible_content = chat_list_full_area_buf
             .content
             .into_iter()
-            .skip((chat_area.width * self.scroll_props.scroll_offset) as usize) // 跳过滚动条滚动位置头部的区域
-            .take(chat_area.area() as usize); // 取出可见区域的内容
+            .skip((chat_area_width * self.scroll_props.scroll_offset) as usize) // 跳过滚动条滚动位置头部的区域
+            .take((chat_area_width * chat_area_height) as usize); // 取出可见区域的内容
+
+        let buf = frame.buffer_mut();
         for (i, cell) in visible_content.enumerate() {
-            let x = i as u16 % chat_area.width;
-            let y = i as u16 / chat_area.width;
+            let x = i as u16 % chat_area_width;
+            let y = i as u16 / chat_area_width;
             buf[(chat_list_full_area.x + x, chat_list_full_area.y + y)] = cell;
         }
 
         let show_chat_item_area = chat_list_full_area.intersection(buf.area);
-        // 给聊天记录区域渲染边框
-        chat_block.render(show_chat_item_area, buf);
         let mut state =
             // ScrollbarState::new(self.max_scroll_offset() as usize)
             ScrollbarState::new(0)
             .position(self.scroll_props.scroll_offset as usize);
         Scrollbar::new(ScrollbarOrientation::VerticalRight).render(show_chat_item_area, buf, &mut state);
+        // 给聊天记录区域渲染边框
+        chat_block.render(chat_area, buf);
     }
 }
