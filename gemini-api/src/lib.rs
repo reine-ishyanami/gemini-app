@@ -22,7 +22,7 @@ pub async fn chat_once(content: String, key: String) -> Result<String> {
     // 发送 GET 请求，并添加自定义头部
     let response = client
         .post(url)
-        .header("Content-Type", "Application/json")
+        .header("Content-Type", "application/json")
         .body(body_json)
         .send()
         .await?;

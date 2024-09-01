@@ -5,10 +5,11 @@ use chrono::Local;
 use gemini_api::body::GenerationConfig;
 use gemini_api::model::blocking::Gemini;
 use gemini_api::model::LanguageModel;
-use ratatui::layout::{Alignment, Position};
+use ratatui::buffer::Buffer;
+use ratatui::layout::{Alignment, Position, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{List, Paragraph};
+use ratatui::widgets::{List, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget};
 use ratatui::Frame;
 use ratatui::{
     crossterm::event::{self, Event, KeyEvent, KeyEventKind},
@@ -26,15 +27,50 @@ use crate::model::Sender::{Bot, User};
 /// 窗口UI
 #[derive(Default)]
 pub struct UI {
+    /// 是否正在接收消息
     receiving_message: bool,
+    /// 消息响应失败
+    response_status: ResponseStatus,
+    /// 是否应该退出程序
     should_exit: bool,
+    /// 输入框内容
     input_buffer: String,
+    /// 聊天历史记录
     chat_history: Vec<ChatMessage>,
+    /// Gemini API
     gemini: Option<Gemini>,
-    /// 指针位置，每个ASCII字符占两格，非ASCII字符占两格
+
+    cursor_props: CursorProps,
+    scroll_props: ScrollProps,
+}
+
+/// 响应状态
+#[derive(Default)]
+pub enum ResponseStatus {
+    #[default]
+    None,
+    Failed(String),
+}
+
+/// 指针位置相关属性
+#[derive(Default)]
+pub struct CursorProps {
+    /// 指针位置，光标指向输入字符串中第几位
     cursor_index: usize,
-    /// 字符位置，光标当前坐标（这个参数比 cursor_index 的大或相等）
+    /// 字符位置，光标当前坐标，每一个 ASCII 字符占1位，非 ASCII 字符占2位
+    /// 如果输入的文本为纯 ASCII 字符，则于 cursor_index 相等，如果包含非 ASCII 字符，则会比 cursor_index 大
     charactor_index: usize,
+}
+
+/// 滚动条相关属性
+#[derive(Default)]
+pub struct ScrollProps {
+    /// 滚动条偏移量
+    scroll_offset: u16,
+    /// 聊天历史记录区域高度
+    chat_history_area_height: u16,
+    /// 最后一条记录的高度
+    last_chat_history_height: u16,
 }
 
 impl From<&ChatMessage> for ListItem<'_> {
@@ -114,19 +150,34 @@ impl UI {
 
     /// 处理按键事件
     fn handle_key(&mut self, key: KeyEvent, tx: mpsc::Sender<String>, rx: &mpsc::Receiver<String>) {
+        // 如果接收消息位为真
         if self.receiving_message {
+            // 滚动到最新的一条消息
+            self.scroll_props.scroll_offset = self.max_scroll_offset();
+            // 阻塞接收消息
             if let Ok(request) = rx.recv() {
-                let response = self.gemini.as_mut().unwrap().chat_conversation(request).unwrap();
-                let response = if response.ends_with("\n") {
-                    response[..response.len() - 1].to_owned()
-                } else {
-                    response
-                };
-                self.chat_history.push(ChatMessage {
-                    sender: Bot,
-                    message: response,
-                    date_time: Local::now(),
-                });
+                match self.gemini.as_mut().unwrap().chat_conversation(request) {
+                    // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
+                    Ok(response) => {
+                        let response = response.replace("\n\n", "\n");
+                        let response = if response.ends_with("\n") {
+                            response[..response.len() - 1].to_owned()
+                        } else {
+                            response
+                        };
+                        self.chat_history.push(ChatMessage {
+                            sender: Bot,
+                            message: response,
+                            date_time: Local::now(),
+                        });
+                    }
+                    // 接收响应消息失败，将响应状态位改为失败，并提供错误信息
+                    Err(e) => {
+                        if let Some(msg) = e.downcast_ref::<String>() {
+                            self.response_status = ResponseStatus::Failed(msg.clone());
+                        }
+                    }
+                }
                 self.receiving_message = false;
             }
             return;
@@ -139,8 +190,8 @@ impl UI {
             event::KeyCode::Enter => self.submit_message(tx),
             event::KeyCode::Left => self.move_cursor_left(self.get_current_char()),
             event::KeyCode::Right => self.move_cursor_right(self.get_next_char()),
-            event::KeyCode::Up => {}
-            event::KeyCode::Down => {}
+            event::KeyCode::Up => self.up(),
+            event::KeyCode::Down => self.down(),
             event::KeyCode::Home => self.reset_cursor(),
             event::KeyCode::End => self.end_of_cursor(),
             event::KeyCode::Delete => self.delete_suf_char(),
@@ -152,52 +203,76 @@ impl UI {
         }
     }
 
+    /// 聊天区域向上滚动
+    fn up(&mut self) {
+        self.scroll_props.scroll_offset = self.scroll_props.scroll_offset.saturating_sub(1);
+    }
+
+    /// 聊天区域向下滚动
+    fn down(&mut self) {
+        self.scroll_props.scroll_offset = self
+            .scroll_props
+            .scroll_offset
+            .saturating_add(1)
+            .min(self.max_scroll_offset());
+    }
+
+    fn max_scroll_offset(&self) -> u16 {
+        self.scroll_props.chat_history_area_height - self.scroll_props.last_chat_history_height
+    }
+
     /// 定位到字符串末尾
     fn end_of_cursor(&mut self) {
-        self.cursor_index = self.input_buffer.chars().count();
-        self.charactor_index = self.input_length();
+        self.cursor_props.cursor_index = self.input_buffer.chars().count();
+        self.cursor_props.charactor_index = self.input_length();
     }
 
     /// 获取当前光标指向的字符
     fn get_current_char(&self) -> char {
-        if self.cursor_index == 0 {
+        if self.cursor_props.cursor_index == 0 {
             '\0'
         } else {
-            self.input_buffer.chars().nth(self.cursor_index - 1).unwrap()
+            self.input_buffer
+                .chars()
+                .nth(self.cursor_props.cursor_index - 1)
+                .unwrap()
         }
     }
 
     /// 获取当前光标的下一个字符
     fn get_next_char(&self) -> char {
-        self.input_buffer.chars().nth(self.cursor_index).unwrap_or('\0')
+        self.input_buffer
+            .chars()
+            .nth(self.cursor_props.cursor_index)
+            .unwrap_or('\0')
     }
 
     /// 向左移动光标
     fn move_cursor_left(&mut self, c: char) {
-        let origin_cursor_index = self.cursor_index;
-        let cursor_moved_left = self.cursor_index.saturating_sub(1);
-        self.cursor_index = self.clamp_cursor(cursor_moved_left);
+        let origin_cursor_index = self.cursor_props.cursor_index;
+        let cursor_moved_left = self.cursor_props.cursor_index.saturating_sub(1);
+        self.cursor_props.cursor_index = self.clamp_cursor(cursor_moved_left);
         // 光标有变化
-        if origin_cursor_index != self.cursor_index {
-            self.charactor_index = if c.is_ascii() {
-                self.charactor_index.saturating_sub(1)
+        if origin_cursor_index != self.cursor_props.cursor_index {
+            self.cursor_props.charactor_index = if c.is_ascii() {
+                self.cursor_props.charactor_index.saturating_sub(1)
             } else {
-                self.charactor_index.saturating_sub(2)
+                self.cursor_props.charactor_index.saturating_sub(2)
             }
         }
     }
 
     /// 向右移动光标
     fn move_cursor_right(&mut self, c: char) {
-        let origin_cursor_index = self.cursor_index;
-        let cursor_moved_right = self.cursor_index.saturating_add(1);
-        self.cursor_index = self.clamp_cursor(cursor_moved_right);
+        let origin_cursor_index = self.cursor_props.cursor_index;
+        let cursor_moved_right = self.cursor_props.cursor_index.saturating_add(1);
+        self.cursor_props.cursor_index = self.clamp_cursor(cursor_moved_right);
         // 光标有变化
-        if origin_cursor_index != self.cursor_index {
-            self.charactor_index = if c.is_ascii() {
-                self.charactor_index.saturating_add(1)
+        if origin_cursor_index != self.cursor_props.cursor_index {
+            self.cursor_props.charactor_index = if c.is_ascii() {
+                self.cursor_props.charactor_index.saturating_add(1)
             } else {
-                self.charactor_index.saturating_add(2)
+                self.cursor_props.charactor_index.saturating_add(2)
             }
         }
     }
@@ -213,7 +288,7 @@ impl UI {
         self.input_buffer
             .char_indices()
             .map(|(i, _)| i)
-            .nth(self.cursor_index)
+            .nth(self.cursor_props.cursor_index)
             .unwrap_or(self.input_buffer.len())
     }
 
@@ -227,10 +302,10 @@ impl UI {
 
     /// 删除当前光标指向字符
     fn delete_pre_char(&mut self) {
-        let is_not_cursor_leftmost = self.cursor_index != 0;
+        let is_not_cursor_leftmost = self.cursor_props.cursor_index != 0;
         if is_not_cursor_leftmost {
             let delete_char = self.get_current_char();
-            let current_index = self.cursor_index;
+            let current_index = self.cursor_props.cursor_index;
             let from_left_to_current_index = current_index - 1;
             let before_char_to_delete = self.input_buffer.chars().take(from_left_to_current_index);
             let after_char_to_delete = self.input_buffer.chars().skip(current_index);
@@ -241,9 +316,9 @@ impl UI {
 
     /// 删除当前光标位置的后一个字符
     fn delete_suf_char(&mut self) {
-        let is_not_cursor_rightmost = self.cursor_index != self.input_buffer.chars().count();
+        let is_not_cursor_rightmost = self.cursor_props.cursor_index != self.input_buffer.chars().count();
         if is_not_cursor_rightmost {
-            let current_index = self.cursor_index;
+            let current_index = self.cursor_props.cursor_index;
             let from_left_to_current_index = current_index + 1;
             let before_char_to_delete = self.input_buffer.chars().take(current_index);
             let after_char_to_delete = self.input_buffer.chars().skip(from_left_to_current_index);
@@ -258,12 +333,13 @@ impl UI {
 
     /// 重置光标位置
     fn reset_cursor(&mut self) {
-        self.cursor_index = 0;
-        self.charactor_index = 0;
+        self.cursor_props.cursor_index = 0;
+        self.cursor_props.charactor_index = 0;
     }
 
     /// 提交消息
     fn submit_message(&mut self, tx: mpsc::Sender<String>) {
+        self.scroll_props.scroll_offset = self.max_scroll_offset();
         if !self.input_buffer.is_empty() {
             if self.gemini.is_none() {
                 self.init_gemini_api(Some(self.input_buffer.clone()));
@@ -273,27 +349,13 @@ impl UI {
                     message: self.input_buffer.clone(),
                     date_time: Local::now(),
                 });
+                // 将获取消息标志位置真，发送消息给下一次循环使用
                 self.receiving_message = true;
                 let _ = tx.send(self.input_buffer.clone());
-                // let response = self
-                //     .gemini
-                //     .as_mut()
-                //     .unwrap()
-                //     .chat_conversation(self.input_buffer.clone())
-                //     .unwrap();
-                // let response = if response.ends_with("\n") {
-                //     response[..response.len() - 1].to_owned()
-                // } else {
-                //     response
-                // };
-                // self.chat_history.push(ChatMessage {
-                //     sender: Bot,
-                //     message: response,
-                //     date_time: Local::now(),
-                // });
             }
             self.input_buffer.clear();
             self.reset_cursor();
+            self.scroll_props.scroll_offset = self.max_scroll_offset();
         }
     }
 
@@ -336,50 +398,83 @@ impl UI {
     }
 
     /// 绘制UI
-    fn draw(&self, frame: &mut Frame) {
+    fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
         // 计算显示区域宽度
-        let chat_area_width = || area.width as usize - 2;
-        // 这里 -2 的原因是因为输入框中具有两侧的的 1px 边框
+        // 这里 -2 的原因是输入框中具有两侧的的 1px 边框，此闭包用于限制每一行文本的最大宽度，
+        // 如果大于这个数值，可能在文本需要换行时产生丢失文本的情况
+        let chat_area_width = || area.width as usize - 2 - 5;
         // 计算输入框区域宽度
+        // 这里 -2 的原因是因为输入框中具有两侧的的 1px 边框
         let input_area_width = || area.width as usize - 2;
+        let [chat_area, input_area] = Layout::vertical([Fill(1), Length(3)]).areas(area);
+        // 聊天记录区域（顶部）
+        self.render_chat_area(frame, chat_area, chat_area_width);
+        // 输入区域（底部）
+        self.render_input_area(frame, input_area, input_area_width);
+    }
 
+    /// 渲染输入区域
+    fn render_input_area<F>(&mut self, frame: &mut Frame, input_area: Rect, input_area_width: F)
+    where
+        F: Fn() -> usize,
+    {
+        // 输入区域（底部）
         let input_block_title = if self.gemini.is_none() {
             "Input Key"
         } else {
             "Input Text"
         };
-        let [chat_area, input_area_area] = Layout::vertical([Fill(1), Length(3)]).areas(area);
-        let chat_block = Block::default()
-            .title("Chat")
-            .border_style(Style::default().fg(Color::Blue))
-            .borders(Borders::ALL);
         let input_block = Block::default()
             .title(input_block_title)
             .border_style(Style::default().fg(Color::Green))
             .borders(Borders::ALL);
         // 输入框内容
-        let mut text = if self.input_length() > input_area_width() && self.charactor_index > input_area_width() {
-            self.sub_input_buffer(self.charactor_index - input_area_width(), self.charactor_index)
+        let text = if self.input_length() > input_area_width() && self.cursor_props.charactor_index > input_area_width()
+        {
+            self.sub_input_buffer(
+                self.cursor_props.charactor_index - input_area_width(),
+                self.cursor_props.charactor_index,
+            )
         } else {
             self.input_buffer.clone()
         };
 
-        // 如果处于等待消息接收状态，则显示等待提示
-        if self.receiving_message {
-            text = "Receiving message...".to_owned();
-        }
+        let input_paragraph = if self.receiving_message {
+            // 如果处于等待消息接收状态，则显示等待提示
+            let text = "Receiving message...".to_owned();
+            Paragraph::new(text)
+                .block(input_block)
+                .style(Style::default().fg(Color::Cyan))
+        } else if let ResponseStatus::Failed(msg) = &self.response_status {
+            // 接收响应消息失败
+            let text = msg.clone();
+            self.response_status = ResponseStatus::None;
+            Paragraph::new(text)
+                .block(input_block)
+                .style(Style::default().fg(Color::Red))
+        } else {
+            Paragraph::new(text)
+                .block(input_block)
+                .style(Style::default().fg(Color::Yellow))
+        };
 
-        let input_paragraph = Paragraph::new(text)
-            .block(input_block)
-            .style(Style::default().fg(Color::Yellow));
-        // 输入区域
-        // input_paragraph.render(input_area_area, buf);
-        frame.render_widget(input_paragraph, input_area_area);
+        frame.render_widget(input_paragraph, input_area);
         frame.set_cursor_position(Position::new(
-            input_area_area.x + self.charactor_index as u16 + 1,
-            input_area_area.y + 1,
+            input_area.x + self.cursor_props.charactor_index as u16 + 1,
+            input_area.y + 1,
         ));
+    }
+
+    /// 渲染聊天记录区域
+    fn render_chat_area<F>(&mut self, frame: &mut Frame, chat_area: Rect, chat_area_width: F)
+    where
+        F: Fn() -> usize,
+    {
+        let chat_block = Block::default()
+            .title("Chat")
+            .border_style(Style::default().fg(Color::Blue))
+            .borders(Borders::ALL);
         let items: Vec<ListItem> = self
             .chat_history
             .iter()
@@ -407,11 +502,50 @@ impl UI {
             })
             .map(|m| (&m).into())
             .collect();
+        // 保存最后一条记录的高度，用于计算滚动条位置
+        self.scroll_props.last_chat_history_height = items.clone().iter().last().map_or(0, |item| item.height()) as u16;
+        // 计算当前聊天记录区域高度
+        self.scroll_props.chat_history_area_height = items.clone().iter().map(|item| item.height() as u16).sum();
         let chat_list = List::new(items)
-            .block(chat_block)
-            .style(Style::default().fg(Color::White))
-            .scroll_padding(10);
-        // 聊天记录区域
-        frame.render_widget(chat_list, chat_area);
+            .block(Block::default().borders(Borders::LEFT | Borders::RIGHT | Borders::TOP))
+            .style(Style::default().fg(Color::White));
+
+        // 滚动条渲染
+        // 聊天区域高度，如果大于聊天记录区域高度，则显示聊天记录区域高度（可能有问题）TODO
+        let height = if chat_area.height > self.scroll_props.chat_history_area_height {
+            chat_area.height
+        } else {
+            self.scroll_props.chat_history_area_height
+        };
+        // let height = chat_area.height;
+        // 这块区域将不会被实际渲染
+        let chat_list_full_area = Rect::new(0, 0, chat_area.width, height);
+        let mut chat_list_full_area_buf = Buffer::empty(chat_list_full_area);
+
+        // 将列表内容渲染到这块区域中
+        Widget::render(chat_list, chat_list_full_area, &mut chat_list_full_area_buf);
+        let buf = frame.buffer_mut();
+
+        // frame.render_buffer(chat_area.x, chat_area.y, &chat_list_full_area_buf);
+
+        let visible_content = chat_list_full_area_buf
+            .content
+            .into_iter()
+            .skip((chat_area.width * self.scroll_props.scroll_offset) as usize) // 跳过滚动条滚动位置头部的区域
+            .take(chat_area.area() as usize); // 取出可见区域的内容
+        for (i, cell) in visible_content.enumerate() {
+            let x = i as u16 % chat_area.width;
+            let y = i as u16 / chat_area.width;
+            buf[(chat_list_full_area.x + x, chat_list_full_area.y + y)] = cell;
+        }
+
+        let show_chat_item_area = chat_list_full_area.intersection(buf.area);
+        // 给聊天记录区域渲染边框
+        chat_block.render(show_chat_item_area, buf);
+        let mut state =
+            // ScrollbarState::new(self.max_scroll_offset() as usize)
+            ScrollbarState::new(0)
+            .position(self.scroll_props.scroll_offset as usize);
+        Scrollbar::new(ScrollbarOrientation::VerticalRight).render(show_chat_item_area, buf, &mut state);
     }
 }

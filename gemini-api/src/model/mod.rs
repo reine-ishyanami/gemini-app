@@ -3,9 +3,9 @@ pub mod blocking;
 
 use std::fmt;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use reqwest::Client;
-use serde_json;
+use serde_json::{self, Value};
 
 use crate::body::{GeminiRequestBody, GeminiResponseBody, GenerationConfig, Paragraph, Part, Role};
 
@@ -83,16 +83,23 @@ impl Gemini {
         let response = self
             .client
             .post(url)
-            .header("Content-Type", "Application/json")
+            .header("Content-Type", "application/json")
             .body(body_json)
             .send()
             .await?;
-        let response_text = response.text().await?;
-        // 解析响应内容
-        let response_json: GeminiResponseBody = serde_json::from_str(&response_text)?;
-
-        let response_text = response_json.candidates[0].content.parts[0].text.clone();
-        Ok(response_text)
+        if response.status().is_success() {
+            let response_text = response.text().await?;
+            // 解析响应内容
+            let response_json: GeminiResponseBody = serde_json::from_str(&response_text)?;
+            let response_text = response_json.candidates[0].content.parts[0].text.clone();
+            Ok(response_text)
+        } else {
+            let response_text = response.text().await?;
+            // 解析错误响应内容
+            let response_json: Value = serde_json::from_str(&response_text)?;
+            let error_message = response_json["error"]["message"].as_str().unwrap().to_owned();
+            bail!(error_message)
+        }
     }
 
     /// 异步连续对话
@@ -112,22 +119,31 @@ impl Gemini {
         let response = self
             .client
             .post(url)
-            .header("Content-Type", "Application/json")
+            .header("Content-Type", "application/json")
             .body(body_json)
             .send()
             .await?;
-        let response_text = response.text().await?;
-        // 解析响应内容
-        let response_json: GeminiResponseBody = serde_json::from_str(&response_text)?;
-
-        let response_text = response_json.candidates[0].content.parts[0].text.clone();
-        self.contents.push(Paragraph {
-            role: Role::Model,
-            parts: vec![Part {
-                text: response_text.clone(),
-            }],
-        });
-        Ok(response_text)
+        if response.status().is_success() {
+            let response_text = response.text().await?;
+            // 解析响应内容
+            let response_json: GeminiResponseBody = serde_json::from_str(&response_text)?;
+            let response_text = response_json.candidates[0].content.parts[0].text.clone();
+            self.contents.push(Paragraph {
+                role: Role::Model,
+                parts: vec![Part {
+                    text: response_text.clone(),
+                }],
+            });
+            Ok(response_text)
+        } else {
+            // 如果响应失败，则移除最后发送的那次用户请求
+            self.contents.pop();
+            let response_text = response.text().await?;
+            // 解析错误响应内容
+            let response_json: Value = serde_json::from_str(&response_text)?;
+            let error_message = response_json["error"]["message"].as_str().unwrap().to_owned();
+            bail!(error_message)
+        }
     }
 }
 
