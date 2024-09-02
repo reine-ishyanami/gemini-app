@@ -136,7 +136,7 @@ impl From<&ChatMessage> for ListItem<'_> {
                 lines
             }
             Split => {
-                vec![Line::from("   ".to_owned()).alignment(Alignment::Center)]
+                vec![Line::from(String::new()).alignment(Alignment::Center)]
             }
         };
         ListItem::new(lines)
@@ -167,7 +167,6 @@ impl UI {
                 message: String::new(),
                 date_time: Local::now(),
             });
-            return;
         }
         // 如果接收消息位为真
         if self.receiving_message {

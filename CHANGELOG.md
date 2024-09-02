@@ -15,6 +15,10 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -->
 
+# Version 0.1.1 (2024-09-02)
+
+fix: after receive message first char can't input
+
 # Version 0.1.0 (2024-09-02)
 
 1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey) to generate you api key.
