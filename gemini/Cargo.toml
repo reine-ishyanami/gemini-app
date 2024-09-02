@@ -2,9 +2,14 @@
 name = "gemini"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/reine-ishyanami/gemini-app"
 
 [dependencies]
 gemini-api = { path = "../gemini-api", features = ["blocking"]}
 ratatui ={ workspace = true }
 anyhow = { workspace = true }
 chrono ={ workspace = true }
+
+[[bin]]
+name = "gemini"
+path = "src/main.rs"

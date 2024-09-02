@@ -11,3 +11,19 @@ serde = { version = "1.0", features = ["derive"] }  # 序列化/反序列化库
 serde_json = "1.0.127"  # 序列化/反序列化库
 ratatui = "0.28.1"  # 终端UI库
 chrono = "0.4.38"  # 时间处理库
+
+# Config for 'cargo dist'
+[workspace.metadata.dist]
+# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.20.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = []
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+
+# The profile that 'cargo dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
