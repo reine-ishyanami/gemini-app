@@ -12,7 +12,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{List, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget};
 use ratatui::Frame;
 use ratatui::{
-    crossterm::event::{self, Event, KeyEvent, KeyEventKind},
+    crossterm::event::{self, Event, KeyEventKind},
     layout::{
         Constraint::{Fill, Length},
         Layout,
@@ -150,15 +150,13 @@ impl UI {
         self.init_gemini_api(None);
         while !self.should_exit {
             terminal.draw(|frame| self.draw(frame))?;
-            if let Event::Key(key) = event::read()? {
-                self.handle_key(key, tx.clone(), &rx);
-            };
+            self.handle_key(tx.clone(), &rx);
         }
         Ok(())
     }
 
     /// 处理按键事件
-    fn handle_key(&mut self, key: KeyEvent, tx: mpsc::Sender<String>, rx: &mpsc::Receiver<String>) {
+    fn handle_key(&mut self, tx: mpsc::Sender<String>, rx: &mpsc::Receiver<String>) {
         if self.scroll_props.add_a_blank_line {
             self.scroll_props.add_a_blank_line = false;
             self.chat_history.push(ChatMessage {
@@ -206,24 +204,28 @@ impl UI {
             }
             return;
         }
-        if key.kind != KeyEventKind::Press {
-            return;
-        }
-        match key.code {
-            event::KeyCode::Backspace => self.delete_pre_char(),
-            event::KeyCode::Enter => self.submit_message(tx),
-            event::KeyCode::Left => self.move_cursor_left(self.get_current_char()),
-            event::KeyCode::Right => self.move_cursor_right(self.get_next_char()),
-            event::KeyCode::Up => self.up(),
-            event::KeyCode::Down => self.down(),
-            event::KeyCode::Home => self.reset_cursor(),
-            event::KeyCode::End => self.end_of_cursor(),
-            event::KeyCode::Delete => self.delete_suf_char(),
-            event::KeyCode::Char(x) => self.enter_char(x),
-            event::KeyCode::Esc => {
-                self.should_exit = true;
+
+        // 接收键盘事件
+        if let Ok(Event::Key(key)) = event::read() {
+            if key.kind != KeyEventKind::Press {
+                return;
             }
-            _ => {}
+            match key.code {
+                event::KeyCode::Backspace => self.delete_pre_char(),
+                event::KeyCode::Enter => self.submit_message(tx),
+                event::KeyCode::Left => self.move_cursor_left(self.get_current_char()),
+                event::KeyCode::Right => self.move_cursor_right(self.get_next_char()),
+                event::KeyCode::Up => self.up(),
+                event::KeyCode::Down => self.down(),
+                event::KeyCode::Home => self.reset_cursor(),
+                event::KeyCode::End => self.end_of_cursor(),
+                event::KeyCode::Delete => self.delete_suf_char(),
+                event::KeyCode::Char(x) => self.enter_char(x),
+                event::KeyCode::Esc => {
+                    self.should_exit = true;
+                }
+                _ => {}
+            }
         }
     }
 
