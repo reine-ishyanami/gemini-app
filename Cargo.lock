@@ -279,12 +279,14 @@ dependencies = [
 
 [[package]]
 name = "gemini"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "chrono",
  "gemini-api",
  "ratatui",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -23,6 +23,7 @@ use ratatui::{
 
 use crate::model::ChatMessage;
 use crate::model::Sender::{Bot, Split, User};
+use crate::store::{read_config, save_config};
 
 /// 窗口UI
 #[derive(Default)]
@@ -49,6 +50,7 @@ pub struct UI {
 pub enum ResponseStatus {
     #[default]
     None,
+    /// 接收响应消息失败，提供错误信息
     Failed(String),
 }
 
@@ -310,6 +312,7 @@ impl UI {
         self.move_cursor_right(new_char);
     }
 
+    /// 获取当前光标位置的字节索引
     fn byte_index(&self) -> usize {
         self.input_buffer
             .char_indices()
@@ -405,22 +408,34 @@ impl UI {
         result
     }
 
-    /// 尝试通过读取环境变量信息初始化Gemini API
+    /// 尝试通过读取环境变量信息初始化 Gemini API
     fn init_gemini_api(&mut self, key: Option<String>) {
-        if let Some(key) = key {
-            let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
-            gemini.set_options(GenerationConfig {
-                maxOutputTokens: 2048,
-                ..GenerationConfig::default()
-            });
-            self.gemini = Some(gemini)
-        } else if let Ok(key) = std::env::var("GEMINI_KEY") {
-            let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
-            gemini.set_options(GenerationConfig {
-                maxOutputTokens: 2048,
-                ..GenerationConfig::default()
-            });
-            self.gemini = Some(gemini)
+        match read_config() {
+            Ok(gemini) => {
+                // 读取到配置文件则直接使用配置文件中的 Gemini API
+                self.gemini = Some(gemini)
+            }
+            Err(_) => {
+                if let Some(key) = key {
+                    // 尝试从 key 构造 Gemini API
+                    let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
+                    gemini.set_options(GenerationConfig {
+                        maxOutputTokens: 2048,
+                        ..GenerationConfig::default()
+                    });
+                    let _ = save_config(gemini.clone());
+                    self.gemini = Some(gemini)
+                } else if let Ok(key) = std::env::var("GEMINI_KEY") {
+                    // 尝试从环境变量中读取密钥
+                    let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
+                    gemini.set_options(GenerationConfig {
+                        maxOutputTokens: 2048,
+                        ..GenerationConfig::default()
+                    });
+                    let _ = save_config(gemini.clone());
+                    self.gemini = Some(gemini)
+                }
+            }
         }
     }
 
@@ -564,10 +579,7 @@ impl UI {
         }
 
         let show_chat_item_area = chat_list_full_area.intersection(buf.area);
-        let mut state =
-            // ScrollbarState::new(self.max_scroll_offset() as usize)
-            ScrollbarState::new(0)
-            .position(self.scroll_props.scroll_offset as usize);
+        let mut state = ScrollbarState::new(0).position(self.scroll_props.scroll_offset as usize);
         Scrollbar::new(ScrollbarOrientation::VerticalRight).render(show_chat_item_area, buf, &mut state);
         // 给聊天记录区域渲染边框
         chat_block.render(chat_area, buf);

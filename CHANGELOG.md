@@ -15,6 +15,10 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -->
 
+# Version 0.2.1 (2024-09-09)
+
+feat: gemini client data persistence
+
 # Version 0.2.0 (2024-09-08)
 
 fix: linux couldn't auto refresh the chat history

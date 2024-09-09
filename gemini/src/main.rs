@@ -1,4 +1,5 @@
 mod model;
+mod store;
 mod ui;
 
 use anyhow::Result;

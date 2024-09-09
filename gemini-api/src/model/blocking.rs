@@ -49,7 +49,7 @@ impl Gemini {
         self.options = options;
     }
 
-    /// 异步单次对话
+    /// 同步单次对话
     pub fn chat_once(&self, content: String) -> Result<String> {
         // 创建一个客户端实例
         let url = format!("{}?key={}", self.url, self.key);
@@ -83,7 +83,7 @@ impl Gemini {
         }
     }
 
-    /// 异步连续对话
+    /// 同步连续对话
     pub fn chat_conversation(&mut self, content: String) -> Result<String> {
         self.contents.push(Paragraph {
             role: Role::User,
