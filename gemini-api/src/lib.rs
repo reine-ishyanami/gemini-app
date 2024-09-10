@@ -1,8 +1,12 @@
 pub mod body;
 pub mod model;
 
-use anyhow::Result;
-use body::{GeminiRequestBody, GeminiResponseBody, GenerationConfig, Paragraph, Part, Role};
+use anyhow::{bail, Result};
+use body::{
+    request::{GeminiRequestBody, GenerationConfig},
+    response::GeminiResponseBody,
+    Content, Part, Role,
+};
 use reqwest::Client;
 
 const GEMINI_API_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
@@ -12,11 +16,12 @@ pub async fn chat_once(content: String, key: String) -> Result<String> {
     let client = Client::new();
     let url = format!("{}?key={}", GEMINI_API_URL, key);
     let body = GeminiRequestBody {
-        contents: vec![Paragraph {
-            role: Role::User,
-            parts: vec![Part { text: content }],
+        contents: vec![Content {
+            role: Some(Role::User),
+            parts: vec![Part::Text(content)],
         }],
-        generationConfig: GenerationConfig::default(),
+        generation_config: Some(GenerationConfig::default()),
+        ..Default::default()
     };
     let body_json = serde_json::to_string(&body)?;
     // 发送 GET 请求，并添加自定义头部
@@ -29,32 +34,34 @@ pub async fn chat_once(content: String, key: String) -> Result<String> {
     let response_text = response.text().await?;
     // 解析响应内容
     let response_json: GeminiResponseBody = serde_json::from_str(&response_text)?;
-
-    let response_text = response_json.candidates[0].content.parts[0].text.clone();
-    Ok(response_text)
+    match response_json.candidates[0].content.parts[0].clone().clone() {
+        Part::Text(s) => Ok(s),
+        _ => bail!("Unexpected response format"),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::env;
 
+    use serde::{Deserialize, Serialize};
+
     use super::*;
 
     #[test]
     fn convert_to_json() -> Result<()> {
         let body = GeminiRequestBody {
-            contents: vec![Paragraph {
-                role: Role::User,
-                parts: vec![Part {
-                    text: "Hello, world!".to_owned(),
-                }],
+            contents: vec![Content {
+                role: Some(Role::User),
+                parts: vec![Part::Text("Hello, world!".to_owned())],
             }],
-            generationConfig: GenerationConfig::default(),
+            generation_config: Some(GenerationConfig::default()),
+            ..Default::default()
         };
         let body_json = serde_json::to_string(&body)?;
         assert_eq!(
             body_json,
-            r#"{"contents":[{"role":"user","parts":[{"text":"Hello, world!"}]}],"generationConfig":{"temperature":1,"topK":64,"topP":0.95,"maxOutputTokens":8192,"responseMimeType":"text/plain"}}"#
+            r#"{"contents":[{"parts":[{"text":"Hello, world!"}],"role":"user"}],"generationConfig":{"responseMimeType":"text/plain","maxOutputTokens":8192,"temperature":1.0,"topP":0.95,"topK":64}}"#
         );
         Ok(())
     }
@@ -68,5 +75,30 @@ mod tests {
         assert!(!response.is_empty());
         println!("Response: {}", response);
         Ok(())
+    }
+
+    #[test]
+    fn test_enum_serialize() {
+        #[derive(Serialize, Deserialize)]
+        enum Message {
+            Quit,
+            Move { x: i32, y: i32 },
+            Write(String),
+        }
+        {
+            let msg = Message::Quit;
+            let serialized = serde_json::to_string(&msg).unwrap();
+            assert_eq!(serialized, r#""Quit""#);
+        }
+        {
+            let msg = Message::Move { x: 10, y: 20 };
+            let serialized = serde_json::to_string(&msg).unwrap();
+            assert_eq!(serialized, r#"{"Move":{"x":10,"y":20}}"#);
+        }
+        {
+            let msg = Message::Write("HelloWorld".to_owned());
+            let serialized = serde_json::to_string(&msg).unwrap();
+            assert_eq!(serialized, r#"{"Write":"HelloWorld"}"#);
+        }
     }
 }

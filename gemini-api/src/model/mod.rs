@@ -7,7 +7,11 @@ use anyhow::{bail, Result};
 use reqwest::Client;
 use serde_json::{self, Value};
 
-use crate::body::{GeminiRequestBody, GeminiResponseBody, GenerationConfig, Paragraph, Part, Role};
+use crate::body::{
+    request::{GeminiRequestBody, GenerationConfig},
+    response::GeminiResponseBody,
+    Content, Part, Role,
+};
 
 pub enum LanguageModel {
     Gemini1_0Pro,
@@ -28,7 +32,7 @@ impl fmt::Display for LanguageModel {
 pub struct Gemini {
     pub key: String,
     pub url: String,
-    pub contents: Vec<Paragraph>,
+    pub contents: Vec<Content>,
     client: Client,
     pub options: GenerationConfig,
 }
@@ -51,7 +55,7 @@ impl Gemini {
     }
 
     /// 重建实例
-    pub fn rebuild(key: String, url: String, contents: Vec<Paragraph>, options: GenerationConfig) -> Self {
+    pub fn rebuild(key: String, url: String, contents: Vec<Content>, options: GenerationConfig) -> Self {
         let client = Client::new();
         Self {
             key,
@@ -72,11 +76,12 @@ impl Gemini {
         // 创建一个客户端实例
         let url = format!("{}?key={}", self.url, self.key);
         let body = GeminiRequestBody {
-            contents: vec![Paragraph {
-                role: Role::User,
-                parts: vec![Part { text: content }],
+            contents: vec![Content {
+                role: Some(Role::User),
+                parts: vec![Part::Text(content)],
             }],
-            generationConfig: self.options.clone(),
+            generation_config: Some(self.options.clone()),
+            ..Default::default()
         };
         let body_json = serde_json::to_string(&body)?;
         // 发送 GET 请求，并添加自定义头部
@@ -91,8 +96,10 @@ impl Gemini {
             let response_text = response.text().await?;
             // 解析响应内容
             let response_json: GeminiResponseBody = serde_json::from_str(&response_text)?;
-            let response_text = response_json.candidates[0].content.parts[0].text.clone();
-            Ok(response_text)
+            match response_json.candidates[0].content.parts[0].clone() {
+                Part::Text(s) => Ok(s),
+                _ => bail!("Unexpected response format"),
+            }
         } else {
             let response_text = response.text().await?;
             // 解析错误响应内容
@@ -104,15 +111,16 @@ impl Gemini {
 
     /// 异步连续对话
     pub async fn chat_conversation(&mut self, content: String) -> Result<String> {
-        self.contents.push(Paragraph {
-            role: Role::User,
-            parts: vec![Part { text: content }],
+        self.contents.push(Content {
+            role: Some(Role::User),
+            parts: vec![Part::Text(content)],
         });
         let cloned_contents = self.contents.clone();
         let url = format!("{}?key={}", self.url, self.key);
         let body = GeminiRequestBody {
             contents: cloned_contents,
-            generationConfig: self.options.clone(),
+            generation_config: Some(self.options.clone()),
+            ..Default::default()
         };
         let body_json = serde_json::to_string(&body)?;
         // 发送 GET 请求，并添加自定义头部
@@ -127,14 +135,16 @@ impl Gemini {
             let response_text = response.text().await?;
             // 解析响应内容
             let response_json: GeminiResponseBody = serde_json::from_str(&response_text)?;
-            let response_text = response_json.candidates[0].content.parts[0].text.clone();
-            self.contents.push(Paragraph {
-                role: Role::Model,
-                parts: vec![Part {
-                    text: response_text.clone(),
-                }],
-            });
-            Ok(response_text)
+            match response_json.candidates[0].content.parts[0].clone().clone() {
+                Part::Text(s) => {
+                    self.contents.push(Content {
+                        role: Some(Role::Model),
+                        parts: vec![Part::Text(s.clone())],
+                    });
+                    Ok(s)
+                }
+                _ => bail!("Unexpected response format"),
+            }
         } else {
             // 如果响应失败，则移除最后发送的那次用户请求
             self.contents.pop();

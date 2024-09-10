@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{bail, Result};
-use gemini_api::{body::GenerationConfig, model::blocking::Gemini};
+use gemini_api::{body::request::GenerationConfig, model::blocking::Gemini};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]

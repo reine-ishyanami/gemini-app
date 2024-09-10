@@ -2,7 +2,7 @@ use std::sync::mpsc;
 
 use anyhow::Result;
 use chrono::Local;
-use gemini_api::body::GenerationConfig;
+use gemini_api::body::request::GenerationConfig;
 use gemini_api::model::blocking::Gemini;
 use gemini_api::model::LanguageModel;
 use ratatui::buffer::Buffer;
@@ -420,7 +420,7 @@ impl UI {
                     // 尝试从 key 构造 Gemini API
                     let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
                     gemini.set_options(GenerationConfig {
-                        maxOutputTokens: 2048,
+                        max_output_tokens: Some(2048),
                         ..GenerationConfig::default()
                     });
                     let _ = save_config(gemini.clone());
@@ -429,7 +429,7 @@ impl UI {
                     // 尝试从环境变量中读取密钥
                     let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
                     gemini.set_options(GenerationConfig {
-                        maxOutputTokens: 2048,
+                        max_output_tokens: Some(2048),
                         ..GenerationConfig::default()
                     });
                     let _ = save_config(gemini.clone());
