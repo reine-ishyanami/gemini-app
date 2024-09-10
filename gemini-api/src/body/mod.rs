@@ -7,7 +7,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 /// The base structured datatype containing multi-part content of a message.
-/// A Content includes a role field designating the producer of the Content and a parts field containing multi-part data that contains the content of the message turn.
+///
+/// A Content includes a role field designating the producer of the Content and a parts field containing multi-part data
+/// that contains the content of the message turn.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Content {
     /// Ordered Parts that constitute a single message. Parts may have different MIME types.
@@ -27,8 +29,10 @@ pub enum Role {
 }
 
 /// A datatype containing media that is part of a multi-part Content message.
-/// A Part consists of data which has an associated datatype. A Part can only contain one of the accepted types in Part.data.
-/// A Part must have a fixed IANA MIME type identifying the type and subtype of the media if the inlineData field is filled with raw bytes.
+///
+/// A Part consists of data which has an associated datatype. A Part can only contain one of the accepted types in
+/// Part.data. A Part must have a fixed IANA MIME type identifying the type and subtype of the media if the inlineData
+/// field is filled with raw bytes.
 #[derive(Clone, Deserialize, Serialize)]
 pub enum Part {
     /// Inline text.
@@ -36,24 +40,29 @@ pub enum Part {
     Text(String),
     /// Inline media bytes.
     InlineData {
-        /// The IANA standard MIME type of the source data. Examples: - image/png - image/jpeg If an unsupported MIME type is provided, an error will be returned.
+        /// The IANA standard MIME type of the source data. Examples: - image/png - image/jpeg If an unsupported MIME
+        /// type is provided, an error will be returned.
         #[serde(rename = "mimeType")]
         mime_type: String,
         /// Raw bytes for media formats.
         /// A base64-encoded string.
         data: String,
     },
-    /// A predicted FunctionCall returned from the model that contains a string representing the FunctionDeclaration.name with the arguments and their values.
+    /// A predicted FunctionCall returned from the model that contains a string representing the
+    /// FunctionDeclaration.name with the arguments and their values.
     FunctionCall {
-        /// Required. The name of the function to call. Must be a-z, A-Z, 0-9, or contain underscores and dashes, with a maximum length of 63.
+        /// Required. The name of the function to call. Must be a-z, A-Z, 0-9, or contain underscores and dashes, with
+        /// a maximum length of 63.
         name: String,
         /// Optional. The function parameters and values in JSON object format.
         #[serde(skip_serializing_if = "Option::is_none")]
         args: Option<BTreeMap<String, serde_json::Value>>,
     },
-    /// The result output of a FunctionCall that contains a string representing the FunctionDeclaration.name and a structured JSON object containing any output from the function is used as context to the model.
+    /// The result output of a FunctionCall that contains a string representing the FunctionDeclaration.name and a
+    /// structured JSON object containing any output from the function is used as context to the model.
     FunctionResponse {
-        /// Required. The name of the function to call. Must be a-z, A-Z, 0-9, or contain underscores and dashes, with a maximum length of 63.
+        /// Required. The name of the function to call. Must be a-z, A-Z, 0-9, or contain underscores and dashes, with
+        /// a maximum length of 63.
         name: String,
         /// Required. The function response in JSON object format.
         response: BTreeMap<String, serde_json::Value>,
