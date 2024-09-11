@@ -15,6 +15,10 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -->
 
+# Version 0.2.2 (2024-09-11)
+
+test submodules split
+
 # Version 0.2.1 (2024-09-09)
 
 feat: gemini client data persistence

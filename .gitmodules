@@ -1,3 +1,3 @@
 [submodule "gemini-api"]
 	path = gemini-api
-	url = git@github.com:reine-ishyanami/gemini-api.git
+	url = https://github.com/reine-ishyanami/gemini-api.git
