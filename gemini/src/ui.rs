@@ -7,8 +7,8 @@ use gemini_api::model::blocking::Gemini;
 use gemini_api::param::LanguageModel;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Position, Rect};
-use ratatui::style::{Color, Style};
-use ratatui::text::Line;
+use ratatui::style::{Color, Style, Stylize};
+use ratatui::widgets::block::{Position as TitlePosition, Title};
 use ratatui::widgets::{List, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget};
 use ratatui::Frame;
 use ratatui::{
@@ -77,79 +77,11 @@ pub struct ScrollProps {
     add_a_blank_line: bool,
 }
 
-impl From<&ChatMessage> for ListItem<'_> {
-    fn from(value: &ChatMessage) -> Self {
-        let lines = match value.sender {
-            User => {
-                let message = value.message.clone();
-                let message_lines = message.split("\n");
-                let mut lines = Vec::new();
-                let mut line_width = 0;
-                for line in message_lines {
-                    let line = if line_width == 0 {
-                        let line = if value.success {
-                            format!("{}  👤", line)
-                        } else {
-                            format!("{}❌👤", line)
-                        };
-                        line_width = line.chars().count();
-                        line
-                    } else {
-                        line.to_owned()
-                    };
-                    lines.push(
-                        Line::from(format!("{:width$}", line, width = line_width))
-                            .alignment(Alignment::Right)
-                            .style(Style::default().fg(Color::Green)),
-                    );
-                }
-                lines.push(
-                    Line::from(value.date_time.format("%H:%M:%S").to_string())
-                        .alignment(Alignment::Right)
-                        .style(Style::default().fg(Color::Cyan)),
-                );
-                lines
-            }
-            Bot => {
-                let message = value.message.clone();
-                let message_lines = message.split("\n");
-                let mut lines = Vec::new();
-                let mut line_width = 0;
-                for line in message_lines {
-                    let line = if line_width == 0 {
-                        let line = format!("🤖 {}", line);
-                        line_width = line.len();
-                        line
-                    } else {
-                        let line = format!("   {}", line);
-                        line.to_owned()
-                    };
-                    lines.push(
-                        Line::from(line.to_string())
-                            .alignment(Alignment::Left)
-                            .style(Style::default().fg(Color::Red)),
-                    );
-                }
-                lines.push(
-                    Line::from(value.date_time.format("%H:%M:%S").to_string())
-                        .alignment(Alignment::Left)
-                        .style(Style::default().fg(Color::Cyan)),
-                );
-                lines
-            }
-            Split => {
-                vec![Line::from(String::new()).alignment(Alignment::Center)]
-            }
-        };
-        ListItem::new(lines)
-    }
-}
-
 impl UI {
     /// 启动UI
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         let (tx, rx) = mpsc::channel();
-        self.init_gemini_api(None);
+        self.restore_or_new_gemini(None);
         while !self.should_exit {
             terminal.draw(|frame| self.draw(frame))?;
             self.handle_key(tx.clone(), &rx);
@@ -370,7 +302,7 @@ impl UI {
     fn submit_message(&mut self, tx: mpsc::Sender<String>) {
         if !self.input_buffer.is_empty() {
             if self.gemini.is_none() {
-                self.init_gemini_api(Some(self.input_buffer.clone()));
+                self.restore_or_new_gemini(Some(self.input_buffer.clone()));
             } else {
                 self.chat_history.push(ChatMessage {
                     success: true,
@@ -409,7 +341,7 @@ impl UI {
     }
 
     /// 尝试通过读取环境变量信息初始化 Gemini API
-    fn init_gemini_api(&mut self, key: Option<String>) {
+    fn restore_or_new_gemini(&mut self, key: Option<String>) {
         match read_config() {
             Ok(gemini) => {
                 // 读取到配置文件则直接使用配置文件中的 Gemini API
@@ -418,25 +350,25 @@ impl UI {
             Err(_) => {
                 if let Some(key) = key {
                     // 尝试从 key 构造 Gemini API
-                    let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
-                    gemini.set_options(GenerationConfig {
-                        max_output_tokens: Some(2048),
-                        ..GenerationConfig::default()
-                    });
-                    let _ = save_config(gemini.clone());
-                    self.gemini = Some(gemini)
+                    self.init_gemini(key);
                 } else if let Ok(key) = std::env::var("GEMINI_KEY") {
                     // 尝试从环境变量中读取密钥
-                    let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
-                    gemini.set_options(GenerationConfig {
-                        max_output_tokens: Some(2048),
-                        ..GenerationConfig::default()
-                    });
-                    let _ = save_config(gemini.clone());
-                    self.gemini = Some(gemini)
+                    self.init_gemini(key);
                 }
             }
         }
+    }
+
+    /// 初始化 Gemini API
+    fn init_gemini(&mut self, key: String) {
+        let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
+        gemini.set_options(GenerationConfig {
+            // max_output_tokens: Some(2048),
+            ..GenerationConfig::default()
+        });
+        gemini.set_system_instruction("你是一只猫娘，你每次说话都会在句尾加上喵~ ".to_owned());
+        let _ = save_config(gemini.clone());
+        self.gemini = Some(gemini)
     }
 
     /// 绘制UI
@@ -449,11 +381,38 @@ impl UI {
         // 计算输入框区域宽度
         // 这里 -2 的原因是因为输入框中具有两侧的的 1px 边框
         let input_area_width = || area.width as usize - 2;
-        let [chat_area, input_area] = Layout::vertical([Fill(1), Length(3)]).areas(area);
+        let [header_area, chat_area, input_area] = Layout::vertical([Length(1), Fill(1), Length(3)]).areas(area);
+        self.render_header_area(frame, header_area);
         // 输入区域（底部）
         self.render_input_area(frame, input_area, input_area_width);
         // 聊天记录区域（顶部）
         self.render_chat_area(frame, chat_area, chat_area_width);
+    }
+
+    /// 渲染头部区域
+    fn render_header_area(&mut self, frame: &mut Frame, header_area: Rect) {
+        let [left, center, right] = Layout::horizontal([Length(2), Fill(1), Length(2)]).areas(header_area);
+
+        let left_block = Block::default().bg(Color::Black);
+        let left_paragraph = Paragraph::new("X")
+            .style(Style::default().fg(Color::White))
+            .left_aligned()
+            .block(left_block);
+        frame.render_widget(left_paragraph, left);
+
+        let right_block = Block::default().bg(Color::Black);
+        let right_paragraph = Paragraph::new("V")
+            .style(Style::default().fg(Color::White))
+            .right_aligned()
+            .block(right_block);
+        frame.render_widget(right_paragraph, right);
+
+        let center_block = Block::default().bg(Color::Black);
+        let center_paragraph = Paragraph::new("Gemini Chat")
+            .style(Style::default().fg(Color::White))
+            .centered()
+            .block(center_block);
+        frame.render_widget(center_paragraph, center);
     }
 
     /// 渲染输入区域
@@ -468,7 +427,11 @@ impl UI {
             "Input Text"
         };
         let input_block = Block::default()
-            .title(input_block_title)
+            .title(
+                Title::from(input_block_title)
+                    .position(TitlePosition::Top)
+                    .alignment(Alignment::Left),
+            )
             .border_style(Style::default().fg(Color::Green))
             .borders(Borders::ALL);
         // 输入框内容
@@ -514,7 +477,7 @@ impl UI {
         F: Fn() -> usize,
     {
         let chat_block = Block::default()
-            .title("Chat")
+            // .title("Chat")
             .border_style(Style::default().fg(Color::Blue))
             .borders(Borders::ALL);
         let items: Vec<ListItem> = self
@@ -548,6 +511,8 @@ impl UI {
             .block(Block::default().borders(Borders::LEFT | Borders::RIGHT | Borders::TOP))
             .style(Style::default().fg(Color::White));
 
+        let chat_area_x = chat_area.x;
+        let chat_area_y = chat_area.y;
         let chat_area_width = chat_area.width;
         let chat_area_height = chat_area.height;
 
@@ -559,7 +524,7 @@ impl UI {
             self.scroll_props.chat_history_area_height
         };
         // 这块区域将不会被实际渲染
-        let chat_list_full_area = Rect::new(0, 0, chat_area_width, height);
+        let chat_list_full_area = Rect::new(chat_area_x, chat_area_y, chat_area_width, height);
         let mut chat_list_full_area_buf = Buffer::empty(chat_list_full_area);
 
         // 将所有列表内容渲染到这块区域中

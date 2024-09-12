@@ -1,3 +1,4 @@
+mod component;
 mod model;
 mod store;
 mod ui;

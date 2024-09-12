@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 struct StoreData {
     pub key: String,
     pub url: String,
+    pub system_instruction: Option<String>,
     pub options: GenerationConfig,
 }
 
@@ -25,6 +26,7 @@ pub fn save_config(gemini: Gemini) -> Result<()> {
         key: gemini.key.clone(),
         url: gemini.url.clone(),
         options: gemini.options.clone(),
+        system_instruction: gemini.system_instruction.clone(),
     };
     let json_data = serde_json::to_string(&data).unwrap();
     let config_file = get_config_file()?;
