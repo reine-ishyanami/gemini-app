@@ -7,7 +7,7 @@ use gemini_api::model::blocking::Gemini;
 use gemini_api::param::LanguageModel;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Position, Rect};
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Color, Style};
 use ratatui::widgets::block::{Position as TitlePosition, Title};
 use ratatui::widgets::{List, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget};
 use ratatui::Frame;
@@ -40,9 +40,20 @@ pub struct UI {
     chat_history: Vec<ChatMessage>,
     /// Gemini API
     gemini: Option<Gemini>,
+    /// 当前聚焦的组件
+    focus_component: MainFocusComponent,
 
     cursor_props: CursorProps,
     scroll_props: ScrollProps,
+}
+
+/// 当前聚焦组件
+#[derive(Default, PartialEq, Eq)]
+pub enum MainFocusComponent {
+    #[default]
+    InputArea,
+    ExitButton,
+    SettingButton,
 }
 
 /// 响应状态
@@ -144,24 +155,42 @@ impl UI {
             if key.kind != KeyEventKind::Press {
                 return;
             }
-            match key.code {
-                event::KeyCode::Backspace => self.delete_pre_char(),
-                event::KeyCode::Enter => self.submit_message(tx),
-                event::KeyCode::Left => self.move_cursor_left(self.get_current_char()),
-                event::KeyCode::Right => self.move_cursor_right(self.get_next_char()),
-                event::KeyCode::Up => self.up(),
-                event::KeyCode::Down => self.down(),
-                event::KeyCode::Home => self.reset_cursor(),
-                event::KeyCode::End => self.end_of_cursor(),
-                event::KeyCode::Delete => self.delete_suf_char(),
-                event::KeyCode::Char(x) => self.enter_char(x),
-                event::KeyCode::Esc => {
-                    self.should_exit = true;
-                }
-                _ => {}
+            match self.focus_component {
+                // 当聚焦于输入框时，处理输入
+                MainFocusComponent::InputArea => match key.code {
+                    event::KeyCode::Backspace => self.delete_pre_char(),
+                    event::KeyCode::Enter => self.submit_message(tx),
+                    event::KeyCode::Left => self.move_cursor_left(self.get_current_char()),
+                    event::KeyCode::Right => self.move_cursor_right(self.get_next_char()),
+                    event::KeyCode::Up => self.up(),
+                    event::KeyCode::Down => self.down(),
+                    event::KeyCode::Home => self.reset_cursor(),
+                    event::KeyCode::End => self.end_of_cursor(),
+                    event::KeyCode::Delete => self.delete_suf_char(),
+                    event::KeyCode::Char(x) => self.enter_char(x),
+                    event::KeyCode::Tab => self.focus_component = MainFocusComponent::ExitButton,
+                    event::KeyCode::Esc => self.should_exit = true,
+                    _ => {}
+                },
+                // 当聚焦于退出按钮时，处理退出
+                MainFocusComponent::ExitButton => match key.code {
+                    event::KeyCode::Enter | event::KeyCode::Esc => self.should_exit = true,
+                    event::KeyCode::Tab => self.focus_component = MainFocusComponent::SettingButton,
+                    _ => {}
+                },
+                // 当聚焦于退出按钮时，处理进入设置菜单
+                MainFocusComponent::SettingButton => match key.code {
+                    event::KeyCode::Esc => self.should_exit = true,
+                    event::KeyCode::Enter => self.open_setting_menu(),
+                    event::KeyCode::Tab => self.focus_component = MainFocusComponent::InputArea,
+                    _ => {}
+                },
             }
         }
     }
+
+    /// 进入设置菜单
+    fn open_setting_menu(&mut self) {}
 
     /// 聊天区域向上滚动
     fn up(&mut self) {
@@ -391,27 +420,30 @@ impl UI {
 
     /// 渲染头部区域
     fn render_header_area(&mut self, frame: &mut Frame, header_area: Rect) {
-        let [left, center, right] = Layout::horizontal([Length(2), Fill(1), Length(2)]).areas(header_area);
+        let [left, center, right] = Layout::horizontal([Length(4), Fill(1), Length(4)]).areas(header_area);
 
-        let left_block = Block::default().bg(Color::Black);
-        let left_paragraph = Paragraph::new("X")
-            .style(Style::default().fg(Color::White))
-            .left_aligned()
-            .block(left_block);
+        // 根据是否选中组件变色
+        let left_color = if self.focus_component == MainFocusComponent::ExitButton {
+            Style::default().fg(Color::Green)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        // 根据是否选中组件变色
+        let right_color = if self.focus_component == MainFocusComponent::SettingButton {
+            Style::default().fg(Color::Green)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        let left_paragraph = Paragraph::new("EXIT").style(left_color).left_aligned();
         frame.render_widget(left_paragraph, left);
-
-        let right_block = Block::default().bg(Color::Black);
-        let right_paragraph = Paragraph::new("V")
-            .style(Style::default().fg(Color::White))
-            .right_aligned()
-            .block(right_block);
+        let right_paragraph = Paragraph::new("SET").style(right_color).right_aligned();
         frame.render_widget(right_paragraph, right);
 
-        let center_block = Block::default().bg(Color::Black);
         let center_paragraph = Paragraph::new("Gemini Chat")
-            .style(Style::default().fg(Color::White))
-            .centered()
-            .block(center_block);
+            .style(Style::default().fg(Color::LightBlue))
+            .centered();
         frame.render_widget(center_paragraph, center);
     }
 
@@ -426,14 +458,26 @@ impl UI {
         } else {
             "Input Text"
         };
-        let input_block = Block::default()
-            .title(
-                Title::from(input_block_title)
-                    .position(TitlePosition::Top)
-                    .alignment(Alignment::Left),
-            )
-            .border_style(Style::default().fg(Color::Green))
-            .borders(Borders::ALL);
+        // 根据是否选中组件变色
+        let input_block = if self.focus_component == MainFocusComponent::InputArea {
+            Block::default()
+                .title(
+                    Title::from(input_block_title)
+                        .position(TitlePosition::Top)
+                        .alignment(Alignment::Left),
+                )
+                .border_style(Style::default().fg(Color::Green))
+                .borders(Borders::ALL)
+        } else {
+            Block::default()
+                .title(
+                    Title::from(input_block_title)
+                        .position(TitlePosition::Top)
+                        .alignment(Alignment::Left),
+                )
+                .border_style(Style::default().fg(Color::White))
+                .borders(Borders::ALL)
+        };
         // 输入框内容
         let text = if self.input_length() > input_area_width() && self.cursor_props.charactor_index > input_area_width()
         {
@@ -465,10 +509,12 @@ impl UI {
         };
 
         frame.render_widget(input_paragraph, input_area);
-        frame.set_cursor_position(Position::new(
-            input_area.x + self.cursor_props.charactor_index as u16 + 1,
-            input_area.y + 1,
-        ));
+        if self.focus_component == MainFocusComponent::InputArea {
+            frame.set_cursor_position(Position::new(
+                input_area.x + self.cursor_props.charactor_index as u16 + 1,
+                input_area.y + 1,
+            ));
+        }
     }
 
     /// 渲染聊天记录区域
