@@ -70,7 +70,7 @@ pub enum MainFocusComponent {
 }
 
 /// 响应状态
-#[derive(Default)]
+#[derive(Default, PartialEq, Eq)]
 pub enum ResponseStatus {
     #[default]
     None,
@@ -176,25 +176,31 @@ impl UI {
             }
             match self.focus_component {
                 // 当聚焦于输入框时，处理输入
-                MainFocusComponent::InputArea => match key.code {
-                    event::KeyCode::Backspace => self.input_area_component.delete_pre_char(),
-                    event::KeyCode::Enter => self.submit_message(tx),
-                    event::KeyCode::Left => self
-                        .input_area_component
-                        .move_cursor_left(self.input_area_component.get_current_char()),
-                    event::KeyCode::Right => self
-                        .input_area_component
-                        .move_cursor_right(self.input_area_component.get_next_char()),
-                    event::KeyCode::Up => self.up(),
-                    event::KeyCode::Down => self.down(),
-                    event::KeyCode::Home => self.input_area_component.reset_cursor(),
-                    event::KeyCode::End => self.input_area_component.end_of_cursor(),
-                    event::KeyCode::Delete => self.input_area_component.delete_suf_char(),
-                    event::KeyCode::Char(x) => self.input_area_component.enter_char(x),
-                    event::KeyCode::Tab => self.focus_component = MainFocusComponent::ExitButton,
-                    event::KeyCode::Esc => self.should_exit = true,
-                    _ => {}
-                },
+                MainFocusComponent::InputArea => {
+                    // 如果是除 Tab 键外其他任意按键事件，则清空错误提示消息
+                    if key.code != event::KeyCode::Tab && self.response_status != ResponseStatus::None {
+                        self.response_status = ResponseStatus::None;
+                    }
+                    match key.code {
+                        event::KeyCode::Backspace => self.input_area_component.delete_pre_char(),
+                        event::KeyCode::Enter => self.submit_message(tx),
+                        event::KeyCode::Left => self
+                            .input_area_component
+                            .move_cursor_left(self.input_area_component.get_current_char()),
+                        event::KeyCode::Right => self
+                            .input_area_component
+                            .move_cursor_right(self.input_area_component.get_next_char()),
+                        event::KeyCode::Up => self.up(),
+                        event::KeyCode::Down => self.down(),
+                        event::KeyCode::Home => self.input_area_component.reset_cursor(),
+                        event::KeyCode::End => self.input_area_component.end_of_cursor(),
+                        event::KeyCode::Delete => self.input_area_component.delete_suf_char(),
+                        event::KeyCode::Char(x) => self.input_area_component.enter_char(x),
+                        event::KeyCode::Tab => self.focus_component = MainFocusComponent::ExitButton,
+                        event::KeyCode::Esc => self.should_exit = true,
+                        _ => {}
+                    };
+                }
                 // 当聚焦于退出按钮时，处理退出
                 MainFocusComponent::ExitButton => match key.code {
                     event::KeyCode::Enter | event::KeyCode::Esc => self.should_exit = true,
@@ -292,10 +298,7 @@ impl UI {
     /// 初始化 Gemini API
     fn init_gemini(&mut self, key: String) {
         let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
-        gemini.set_options(GenerationConfig {
-            // max_output_tokens: Some(2048),
-            ..GenerationConfig::default()
-        });
+        gemini.set_options(GenerationConfig::default());
         gemini.set_system_instruction("你是一只猫娘，你每次说话都会在句尾加上喵~ ".into());
         let _ = save_config(gemini.clone());
         self.gemini = Some(gemini)
@@ -399,7 +402,6 @@ impl UI {
         } else if let ResponseStatus::Failed(msg) = &self.response_status {
             // 接收响应消息失败
             let text = msg.clone();
-            self.response_status = ResponseStatus::None;
             Paragraph::new(text)
                 .block(input_block)
                 .style(Style::default().fg(Color::Red))
