@@ -43,7 +43,8 @@ pub fn read_config() -> Result<Gemini> {
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
         let data: StoreData = serde_json::from_str(&contents)?;
-        let gemini = Gemini::rebuild(data.key, data.model, Vec::new(), data.options);
+        let mut gemini = Gemini::rebuild(data.key, data.model, Vec::new(), data.options);
+        gemini.set_system_instruction(data.system_instruction.unwrap());
         Ok(gemini)
     } else {
         bail!("配置文件不存在")

@@ -3,7 +3,7 @@ use ratatui::{
     crossterm::event::{self, Event, KeyEventKind},
     layout::{
         Constraint::{self, Fill, Length, Min},
-        Layout, Rect,
+        Layout, Position, Rect,
     },
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph},
@@ -12,7 +12,7 @@ use ratatui::{
 
 use crate::store::{read_config, save_config};
 
-use super::{component::AllSettingComponents, InputFieldProps};
+use super::{component::AllSettingComponents, props::InputFieldCursorNeed, InputFieldProps};
 
 /// 窗口UI
 pub struct SettingUI {
@@ -42,7 +42,7 @@ impl SettingUI {
     /// 启动此窗口UI
     pub fn new() -> Self {
         let config = read_config().unwrap_or_default();
-        Self {
+        let mut ui = Self {
             select_input_field: AllSettingComponents::SystemInstruction,
             update: false,
             conifg: config.clone(),
@@ -139,7 +139,16 @@ impl SettingUI {
                     ],
                 ),
             ],
+        };
+
+        // 设置所有输入框组件光标位置
+        for (_, components) in ui.components.iter_mut() {
+            for component in components.iter_mut() {
+                component.input_area_props.end_of_cursor();
+            }
         }
+
+        ui
     }
     /// 处理用户输入
     pub fn handle_key(&mut self) {
@@ -197,11 +206,11 @@ impl SettingUI {
     fn render_content_area(&mut self, frame: &mut Frame, content_area: Rect) {
         let v_list: Vec<Constraint> = self.components.iter().map(|x| x.0).collect();
         let areas = Layout::vertical(v_list).split(content_area);
-        for (i, (_, components)) in self.components.iter().enumerate() {
+        for (i, (_, components)) in self.components.iter_mut().enumerate() {
             let h_list: Vec<Constraint> = components.iter().map(|x| x.layout).collect();
             let area = areas.clone()[i];
             let h_areas = Layout::horizontal(h_list).split(area);
-            for (j, component) in components.iter().enumerate() {
+            for (j, component) in components.iter_mut().enumerate() {
                 let input_area = h_areas.clone()[j];
                 let block_style = if self.select_input_field == component.identifiers {
                     Style::default().fg(Color::Green)
@@ -216,6 +225,12 @@ impl SettingUI {
                     .block(block)
                     .style(Style::default().fg(Color::Yellow));
                 frame.render_widget(input_paragraph, input_area);
+                if self.select_input_field == component.identifiers {
+                    frame.set_cursor_position(Position::new(
+                        input_area.x + component.input_area_props.charactor_index as u16 + 1,
+                        input_area.y + 1,
+                    ));
+                }
             }
         }
     }
