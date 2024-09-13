@@ -6,13 +6,13 @@ use std::{
 };
 
 use anyhow::{bail, Result};
-use gemini_api::{body::request::GenerationConfig, model::blocking::Gemini};
+use gemini_api::{body::request::GenerationConfig, model::blocking::Gemini, param::LanguageModel};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 struct StoreData {
     pub key: String,
-    pub url: String,
+    pub model: LanguageModel,
     pub system_instruction: Option<String>,
     pub options: GenerationConfig,
 }
@@ -24,7 +24,7 @@ const CONFIG_FILE_NAME: &str = "gemini.json";
 pub fn save_config(gemini: Gemini) -> Result<()> {
     let data = StoreData {
         key: gemini.key.clone(),
-        url: gemini.url.clone(),
+        model: gemini.model.clone(),
         options: gemini.options.clone(),
         system_instruction: gemini.system_instruction.clone(),
     };
@@ -43,7 +43,7 @@ pub fn read_config() -> Result<Gemini> {
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
         let data: StoreData = serde_json::from_str(&contents)?;
-        let gemini = Gemini::rebuild(data.key, data.url, Vec::new(), data.options);
+        let gemini = Gemini::rebuild(data.key, data.model, Vec::new(), data.options);
         Ok(gemini)
     } else {
         bail!("配置文件不存在")

@@ -1,12 +1,16 @@
+mod component;
+mod setting;
+
 use std::sync::mpsc;
 
 use anyhow::Result;
 use chrono::Local;
+use component::CursorNeed;
 use gemini_api::body::request::GenerationConfig;
 use gemini_api::model::blocking::Gemini;
 use gemini_api::param::LanguageModel;
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Alignment, Position, Rect};
+use ratatui::layout::{Alignment, Position as CursorPosition, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::block::{Position as TitlePosition, Title};
 use ratatui::widgets::{List, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget};
@@ -34,17 +38,27 @@ pub struct UI {
     response_status: ResponseStatus,
     /// 是否应该退出程序
     should_exit: bool,
-    /// 输入框内容
-    input_buffer: String,
     /// 聊天历史记录
     chat_history: Vec<ChatMessage>,
     /// Gemini API
     gemini: Option<Gemini>,
     /// 当前聚焦的组件
     focus_component: MainFocusComponent,
-
-    cursor_props: CursorProps,
+    /// 输入区域组件
+    input_area_component: InputAreaComponent,
     scroll_props: ScrollProps,
+}
+
+/// 输入区域相关属性
+#[derive(Default)]
+pub struct InputAreaComponent {
+    /// 指针位置，光标指向输入字符串中第几位
+    cursor_index: usize,
+    /// 字符位置，光标当前坐标，每一个 ASCII 字符占1位，非 ASCII 字符占2位
+    /// 如果输入的文本为纯 ASCII 字符，则于 cursor_index 相等，如果包含非 ASCII 字符，则会比 cursor_index 大
+    charactor_index: usize,
+    /// 输入框内容
+    input_buffer: String,
 }
 
 /// 当前聚焦组件
@@ -63,16 +77,6 @@ pub enum ResponseStatus {
     None,
     /// 接收响应消息失败，提供错误信息
     Failed(String),
-}
-
-/// 指针位置相关属性
-#[derive(Default)]
-pub struct CursorProps {
-    /// 指针位置，光标指向输入字符串中第几位
-    cursor_index: usize,
-    /// 字符位置，光标当前坐标，每一个 ASCII 字符占1位，非 ASCII 字符占2位
-    /// 如果输入的文本为纯 ASCII 字符，则于 cursor_index 相等，如果包含非 ASCII 字符，则会比 cursor_index 大
-    charactor_index: usize,
 }
 
 /// 滚动条相关属性
@@ -137,7 +141,7 @@ impl UI {
                         if let Some(msg) = e.downcast_ref::<String>() {
                             self.response_status = ResponseStatus::Failed(msg.clone());
                         } else {
-                            self.response_status = ResponseStatus::Failed("Unknown Error".to_owned());
+                            self.response_status = ResponseStatus::Failed("Unknown Error".into());
                         }
                         // 将最后一条消息状态修改为失败
                         let mut chat_message = self.chat_history.pop().unwrap();
@@ -158,16 +162,20 @@ impl UI {
             match self.focus_component {
                 // 当聚焦于输入框时，处理输入
                 MainFocusComponent::InputArea => match key.code {
-                    event::KeyCode::Backspace => self.delete_pre_char(),
+                    event::KeyCode::Backspace => self.input_area_component.delete_pre_char(),
                     event::KeyCode::Enter => self.submit_message(tx),
-                    event::KeyCode::Left => self.move_cursor_left(self.get_current_char()),
-                    event::KeyCode::Right => self.move_cursor_right(self.get_next_char()),
+                    event::KeyCode::Left => self
+                        .input_area_component
+                        .move_cursor_left(self.input_area_component.get_current_char()),
+                    event::KeyCode::Right => self
+                        .input_area_component
+                        .move_cursor_right(self.input_area_component.get_next_char()),
                     event::KeyCode::Up => self.up(),
                     event::KeyCode::Down => self.down(),
-                    event::KeyCode::Home => self.reset_cursor(),
-                    event::KeyCode::End => self.end_of_cursor(),
-                    event::KeyCode::Delete => self.delete_suf_char(),
-                    event::KeyCode::Char(x) => self.enter_char(x),
+                    event::KeyCode::Home => self.input_area_component.reset_cursor(),
+                    event::KeyCode::End => self.input_area_component.end_of_cursor(),
+                    event::KeyCode::Delete => self.input_area_component.delete_suf_char(),
+                    event::KeyCode::Char(x) => self.input_area_component.enter_char(x),
                     event::KeyCode::Tab => self.focus_component = MainFocusComponent::ExitButton,
                     event::KeyCode::Esc => self.should_exit = true,
                     _ => {}
@@ -210,163 +218,27 @@ impl UI {
         self.scroll_props.chat_history_area_height - self.scroll_props.last_chat_history_height
     }
 
-    /// 定位到字符串末尾
-    fn end_of_cursor(&mut self) {
-        self.cursor_props.cursor_index = self.input_buffer.chars().count();
-        self.cursor_props.charactor_index = self.input_length();
-    }
-
-    /// 获取当前光标指向的字符
-    fn get_current_char(&self) -> char {
-        if self.cursor_props.cursor_index == 0 {
-            '\0'
-        } else {
-            self.input_buffer
-                .chars()
-                .nth(self.cursor_props.cursor_index - 1)
-                .unwrap()
-        }
-    }
-
-    /// 获取当前光标的下一个字符
-    fn get_next_char(&self) -> char {
-        self.input_buffer
-            .chars()
-            .nth(self.cursor_props.cursor_index)
-            .unwrap_or('\0')
-    }
-
-    /// 向左移动光标
-    fn move_cursor_left(&mut self, c: char) {
-        let origin_cursor_index = self.cursor_props.cursor_index;
-        let cursor_moved_left = self.cursor_props.cursor_index.saturating_sub(1);
-        self.cursor_props.cursor_index = self.clamp_cursor(cursor_moved_left);
-        // 光标有变化
-        if origin_cursor_index != self.cursor_props.cursor_index {
-            self.cursor_props.charactor_index = if c.is_ascii() {
-                self.cursor_props.charactor_index.saturating_sub(1)
-            } else {
-                self.cursor_props.charactor_index.saturating_sub(2)
-            }
-        }
-    }
-
-    /// 向右移动光标
-    fn move_cursor_right(&mut self, c: char) {
-        let origin_cursor_index = self.cursor_props.cursor_index;
-        let cursor_moved_right = self.cursor_props.cursor_index.saturating_add(1);
-        self.cursor_props.cursor_index = self.clamp_cursor(cursor_moved_right);
-        // 光标有变化
-        if origin_cursor_index != self.cursor_props.cursor_index {
-            self.cursor_props.charactor_index = if c.is_ascii() {
-                self.cursor_props.charactor_index.saturating_add(1)
-            } else {
-                self.cursor_props.charactor_index.saturating_add(2)
-            }
-        }
-    }
-
-    /// 输入字符
-    fn enter_char(&mut self, new_char: char) {
-        let index = self.byte_index();
-        self.input_buffer.insert(index, new_char);
-        self.move_cursor_right(new_char);
-    }
-
-    /// 获取当前光标位置的字节索引
-    fn byte_index(&self) -> usize {
-        self.input_buffer
-            .char_indices()
-            .map(|(i, _)| i)
-            .nth(self.cursor_props.cursor_index)
-            .unwrap_or(self.input_buffer.len())
-    }
-
-    /// 获取输入框字符长度
-    fn input_length(&self) -> usize {
-        self.input_buffer
-            .chars()
-            .map(|c| if c.is_ascii() { 1 } else { 2 })
-            .sum()
-    }
-
-    /// 删除当前光标指向字符
-    fn delete_pre_char(&mut self) {
-        let is_not_cursor_leftmost = self.cursor_props.cursor_index != 0;
-        if is_not_cursor_leftmost {
-            let delete_char = self.get_current_char();
-            let current_index = self.cursor_props.cursor_index;
-            let from_left_to_current_index = current_index - 1;
-            let before_char_to_delete = self.input_buffer.chars().take(from_left_to_current_index);
-            let after_char_to_delete = self.input_buffer.chars().skip(current_index);
-            self.input_buffer = before_char_to_delete.chain(after_char_to_delete).collect();
-            self.move_cursor_left(delete_char);
-        }
-    }
-
-    /// 删除当前光标位置的后一个字符
-    fn delete_suf_char(&mut self) {
-        let is_not_cursor_rightmost = self.cursor_props.cursor_index != self.input_buffer.chars().count();
-        if is_not_cursor_rightmost {
-            let current_index = self.cursor_props.cursor_index;
-            let from_left_to_current_index = current_index + 1;
-            let before_char_to_delete = self.input_buffer.chars().take(current_index);
-            let after_char_to_delete = self.input_buffer.chars().skip(from_left_to_current_index);
-            self.input_buffer = before_char_to_delete.chain(after_char_to_delete).collect();
-        }
-    }
-
-    /// 限制光标位置
-    fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
-        new_cursor_pos.clamp(0, self.input_buffer.chars().count())
-    }
-
-    /// 重置光标位置
-    fn reset_cursor(&mut self) {
-        self.cursor_props.cursor_index = 0;
-        self.cursor_props.charactor_index = 0;
-    }
-
     /// 提交消息
     fn submit_message(&mut self, tx: mpsc::Sender<String>) {
-        if !self.input_buffer.is_empty() {
+        if !self.input_area_component.input_buffer.is_empty() {
             if self.gemini.is_none() {
-                self.restore_or_new_gemini(Some(self.input_buffer.clone()));
+                self.restore_or_new_gemini(Some(self.input_area_component.input_buffer.clone()));
             } else {
                 self.chat_history.push(ChatMessage {
                     success: true,
                     sender: User,
-                    message: self.input_buffer.clone(),
+                    message: self.input_area_component.input_buffer.clone(),
                     date_time: Local::now(),
                 });
                 // 将获取消息标志位置真，发送消息给下一次循环使用
                 self.receiving_message = true;
-                let _ = tx.send(self.input_buffer.clone());
+                let _ = tx.send(self.input_area_component.input_buffer.clone());
             }
-            self.input_buffer.clear();
-            self.reset_cursor();
+            self.input_area_component.input_buffer.clear();
+            self.input_area_component.reset_cursor();
             // 滚动到最新的一条消息
             self.scroll_props.scroll_offset = self.max_scroll_offset();
         }
-    }
-
-    /// 截取 input_buffer 字符串以供UI展示
-    fn sub_input_buffer(&self, start: usize, count: usize) -> String {
-        let mut result = String::new();
-        let mut char_count = 0;
-
-        for (i, c) in self.input_buffer.char_indices() {
-            // 当我们达到起始字符索引时开始截取
-            if i >= start && char_count < count {
-                result.push(c);
-                char_count += 1;
-            }
-            // 当我们截取了足够的字符后停止
-            if char_count == count {
-                break;
-            }
-        }
-        result
     }
 
     /// 尝试通过读取环境变量信息初始化 Gemini API
@@ -395,7 +267,7 @@ impl UI {
             // max_output_tokens: Some(2048),
             ..GenerationConfig::default()
         });
-        gemini.set_system_instruction("你是一只猫娘，你每次说话都会在句尾加上喵~ ".to_owned());
+        gemini.set_system_instruction("你是一只猫娘，你每次说话都会在句尾加上喵~ ".into());
         let _ = save_config(gemini.clone());
         self.gemini = Some(gemini)
     }
@@ -479,20 +351,20 @@ impl UI {
                 .borders(Borders::ALL)
         };
         // 输入框内容
-        let text = if self.input_length() > input_area_width() && self.cursor_props.charactor_index > input_area_width()
+        let text = if self.input_area_component.input_length() > input_area_width()
+            && self.input_area_component.charactor_index > input_area_width()
         {
-            self.sub_input_buffer(
-                self.cursor_props.charactor_index - input_area_width(),
-                self.cursor_props.charactor_index,
+            self.input_area_component.sub_input_buffer(
+                self.input_area_component.charactor_index - input_area_width(),
+                self.input_area_component.charactor_index,
             )
         } else {
-            self.input_buffer.clone()
+            self.input_area_component.input_buffer.clone()
         };
 
         let input_paragraph = if self.receiving_message {
             // 如果处于等待消息接收状态，则显示等待提示
-            let text = "Receiving message...".to_owned();
-            Paragraph::new(text)
+            Paragraph::new("Receiving message...")
                 .block(input_block)
                 .style(Style::default().fg(Color::Cyan))
         } else if let ResponseStatus::Failed(msg) = &self.response_status {
@@ -510,8 +382,8 @@ impl UI {
 
         frame.render_widget(input_paragraph, input_area);
         if self.focus_component == MainFocusComponent::InputArea {
-            frame.set_cursor_position(Position::new(
-                input_area.x + self.cursor_props.charactor_index as u16 + 1,
+            frame.set_cursor_position(CursorPosition::new(
+                input_area.x + self.input_area_component.charactor_index as u16 + 1,
                 input_area.y + 1,
             ));
         }
