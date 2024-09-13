@@ -1,14 +1,15 @@
 mod component;
+mod props;
 mod setting;
 
 use std::sync::mpsc;
 
 use anyhow::Result;
 use chrono::Local;
-use component::CursorNeed;
 use gemini_api::body::request::GenerationConfig;
 use gemini_api::model::blocking::Gemini;
 use gemini_api::param::LanguageModel;
+use props::{InputFieldCursorNeed, InputFieldProps};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Position as CursorPosition, Rect};
 use ratatui::style::{Color, Style};
@@ -24,6 +25,7 @@ use ratatui::{
     widgets::{Block, Borders, ListItem},
     DefaultTerminal,
 };
+use setting::SettingUI;
 
 use crate::model::ChatMessage;
 use crate::model::Sender::{Bot, Split, User};
@@ -45,20 +47,17 @@ pub struct UI {
     /// 当前聚焦的组件
     focus_component: MainFocusComponent,
     /// 输入区域组件
-    input_area_component: InputAreaComponent,
+    input_area_component: InputFieldProps,
     scroll_props: ScrollProps,
+    /// 当前窗口
+    current_windows: CurrentWindows,
 }
-
-/// 输入区域相关属性
+/// 窗口枚举
 #[derive(Default)]
-pub struct InputAreaComponent {
-    /// 指针位置，光标指向输入字符串中第几位
-    cursor_index: usize,
-    /// 字符位置，光标当前坐标，每一个 ASCII 字符占1位，非 ASCII 字符占2位
-    /// 如果输入的文本为纯 ASCII 字符，则于 cursor_index 相等，如果包含非 ASCII 字符，则会比 cursor_index 大
-    charactor_index: usize,
-    /// 输入框内容
-    input_buffer: String,
+pub enum CurrentWindows {
+    #[default]
+    This,
+    SettingWindow(SettingUI),
 }
 
 /// 当前聚焦组件
@@ -98,8 +97,24 @@ impl UI {
         let (tx, rx) = mpsc::channel();
         self.restore_or_new_gemini(None);
         while !self.should_exit {
-            terminal.draw(|frame| self.draw(frame))?;
-            self.handle_key(tx.clone(), &rx);
+            match self.current_windows {
+                CurrentWindows::This => {
+                    terminal.draw(|frame| self.draw(frame))?;
+                    self.handle_key(tx.clone(), &rx);
+                }
+                CurrentWindows::SettingWindow(ref mut setting_ui) => {
+                    if setting_ui.should_exit {
+                        // 如果配置更新了，则重构 Gemini API
+                        if setting_ui.update {
+                            self.restore_or_new_gemini(None);
+                        }
+                        self.current_windows = CurrentWindows::This;
+                    } else {
+                        terminal.draw(|frame| setting_ui.draw(frame))?;
+                        setting_ui.handle_key();
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -198,7 +213,9 @@ impl UI {
     }
 
     /// 进入设置菜单
-    fn open_setting_menu(&mut self) {}
+    fn open_setting_menu(&mut self) {
+        self.current_windows = CurrentWindows::SettingWindow(SettingUI::new());
+    }
 
     /// 聊天区域向上滚动
     fn up(&mut self) {
@@ -243,10 +260,22 @@ impl UI {
 
     /// 尝试通过读取环境变量信息初始化 Gemini API
     fn restore_or_new_gemini(&mut self, key: Option<String>) {
+        // 尝试读取配置文件
         match read_config() {
             Ok(gemini) => {
-                // 读取到配置文件则直接使用配置文件中的 Gemini API
-                self.gemini = Some(gemini)
+                match self.gemini.clone() {
+                    Some(gemini_origin) => {
+                        // gemni 已经存在，则更新配置信息
+                        let mut gemini_new =
+                            Gemini::rebuild(gemini.key, gemini.model, gemini_origin.contents, gemini.options);
+                        gemini_new.set_system_instruction(gemini.system_instruction.unwrap_or("".into()));
+                        self.gemini = Some(gemini_new)
+                    }
+                    None => {
+                        // 读取到配置文件则直接使用配置文件中的 Gemini API
+                        self.gemini = Some(gemini)
+                    }
+                }
             }
             Err(_) => {
                 if let Some(key) = key {
