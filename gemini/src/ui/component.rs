@@ -13,28 +13,24 @@ impl From<&ChatMessage> for ListItem<'_> {
     fn from(value: &ChatMessage) -> Self {
         let lines = match value.sender {
             User => {
-                let message = value.message.clone();
-                let message_lines = message.split("\n");
+                let message_lines = value.message.lines();
                 let mut lines = Vec::new();
-                let mut line_width = 0;
+                // 用户发送标记以及是否成功标记
+                let line = if value.success {
+                    Line::from("✅👤").alignment(Alignment::Right)
+                } else {
+                    Line::from("❌👤").alignment(Alignment::Right)
+                };
+                lines.push(line);
+                // 用户发送的消息
                 for line in message_lines {
-                    let line = if line_width == 0 {
-                        let line = if value.success {
-                            format!("{}{:>width$}", line, "👤", width = 4)
-                        } else {
-                            format!("{}{:>width$}", line, "❌👤", width = 4)
-                        };
-                        line_width = line.chars().count();
-                        line
-                    } else {
-                        line.to_owned()
-                    };
                     lines.push(
-                        Line::from(format!("{:width$}", line, width = line_width))
+                        Line::from(line.to_owned())
                             .alignment(Alignment::Right)
                             .style(Style::default().fg(Color::Green)),
                     );
                 }
+                // 消息发送时间
                 lines.push(
                     Line::from(value.date_time.format("%H:%M:%S").to_string())
                         .alignment(Alignment::Right)
@@ -43,21 +39,13 @@ impl From<&ChatMessage> for ListItem<'_> {
                 lines
             }
             Bot => {
-                let message = value.message.clone();
-                let message_lines = message.split("\n");
+                let message_lines = value.message.lines();
                 let mut lines = Vec::new();
-                let mut line_width = 0;
+                let line = Line::from("🤖").alignment(Alignment::Left);
+                lines.push(line);
                 for line in message_lines {
-                    let line = if line_width == 0 {
-                        let line = format!("🤖 {}", line);
-                        line_width = line.len();
-                        line
-                    } else {
-                        let line = format!("   {}", line);
-                        line.to_owned()
-                    };
                     lines.push(
-                        Line::from(line.to_string())
+                        Line::from(line.to_owned())
                             .alignment(Alignment::Left)
                             .style(Style::default().fg(Color::Red)),
                     );

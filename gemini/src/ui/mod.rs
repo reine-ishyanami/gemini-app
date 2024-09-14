@@ -312,7 +312,7 @@ impl UI {
         // 计算显示区域宽度
         // 这里 -2 的原因是输入框中具有两侧的的 1px 边框，此闭包用于限制每一行文本的最大宽度，
         // 如果大于这个数值，可能在文本需要换行时产生丢失文本的情况
-        let chat_area_width = || area.width as usize - 2 - 5;
+        let chat_area_width = || area.width as usize - 2 - 10;
         let [header_area, chat_area, input_area] = Layout::vertical([Length(1), Fill(1), Length(3)]).areas(area);
         self.render_header_area(frame, header_area);
         // 输入区域（底部）
