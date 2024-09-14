@@ -94,6 +94,8 @@ pub struct ScrollProps {
 impl UI {
     /// 启动UI
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
+        // 输入框高度永定为 1
+        self.input_area_component.height = 1;
         let (tx, rx) = mpsc::channel();
         self.restore_or_new_gemini(None);
         while !self.should_exit {
@@ -311,13 +313,10 @@ impl UI {
         // 这里 -2 的原因是输入框中具有两侧的的 1px 边框，此闭包用于限制每一行文本的最大宽度，
         // 如果大于这个数值，可能在文本需要换行时产生丢失文本的情况
         let chat_area_width = || area.width as usize - 2 - 5;
-        // 计算输入框区域宽度
-        // 这里 -2 的原因是因为输入框中具有两侧的的 1px 边框
-        let input_area_width = || area.width as usize - 2;
         let [header_area, chat_area, input_area] = Layout::vertical([Length(1), Fill(1), Length(3)]).areas(area);
         self.render_header_area(frame, header_area);
         // 输入区域（底部）
-        self.render_input_area(frame, input_area, input_area_width);
+        self.render_input_area(frame, input_area);
         // 聊天记录区域（顶部）
         self.render_chat_area(frame, chat_area, chat_area_width);
     }
@@ -352,10 +351,9 @@ impl UI {
     }
 
     /// 渲染输入区域
-    fn render_input_area<F>(&mut self, frame: &mut Frame, input_area: Rect, input_area_width: F)
-    where
-        F: Fn() -> usize,
-    {
+    fn render_input_area(&mut self, frame: &mut Frame, input_area: Rect) {
+        // 调整输入框宽度
+        self.input_area_component.width = input_area.width as usize - 2;
         // 输入区域（底部）
         let input_block_title = if self.gemini.is_none() {
             "Input Key"
@@ -383,16 +381,7 @@ impl UI {
                 .borders(Borders::ALL)
         };
         // 输入框内容
-        let text = if self.input_area_component.input_length() > input_area_width()
-            && self.input_area_component.charactor_index > input_area_width()
-        {
-            self.input_area_component.sub_input_buffer(
-                self.input_area_component.charactor_index - input_area_width(),
-                self.input_area_component.charactor_index,
-            )
-        } else {
-            self.input_area_component.input_buffer.clone()
-        };
+        let text = self.input_area_component.should_show_text();
 
         let input_paragraph = if self.receiving_message {
             // 如果处于等待消息接收状态，则显示等待提示
@@ -414,8 +403,8 @@ impl UI {
         frame.render_widget(input_paragraph, input_area);
         if self.focus_component == MainFocusComponent::InputArea {
             frame.set_cursor_position(CursorPosition::new(
-                input_area.x + self.input_area_component.charactor_index as u16 + 1,
-                input_area.y + 1,
+                input_area.x + self.input_area_component.cursor_position_x as u16 + 1,
+                input_area.y + self.input_area_component.cursor_position_y as u16 + 1,
             ));
         }
     }

@@ -72,7 +72,7 @@ impl SettingUI {
                     ],
                 ),
                 (
-                    Length(10),
+                    Min(10),
                     vec![SettingComponent {
                         identifiers: AllSettingComponents::SystemInstruction,
                         label: "system instruction".into(),
@@ -156,13 +156,39 @@ impl SettingUI {
             if key.kind != KeyEventKind::Press {
                 return;
             }
+            // 获取当前选中的输入框
+            let component = self.get_current_input_field().unwrap();
             match key.code {
+                event::KeyCode::Backspace => component.input_area_props.delete_pre_char(),
+                event::KeyCode::Delete => component.input_area_props.delete_suf_char(),
+                event::KeyCode::Left => component
+                    .input_area_props
+                    .move_cursor_left(component.input_area_props.get_current_char()),
+                event::KeyCode::Right => component
+                    .input_area_props
+                    .move_cursor_right(component.input_area_props.get_next_char()),
+                event::KeyCode::Home => component.input_area_props.reset_cursor(),
+                event::KeyCode::End => component.input_area_props.end_of_cursor(),
+                event::KeyCode::Char(x) => component.input_area_props.enter_char(x),
+                event::KeyCode::Enter => component.input_area_props.handle_enter_key(),
                 event::KeyCode::Tab => self.next_input_field(),
                 event::KeyCode::F(2) => self.save_config(),
                 event::KeyCode::Esc => self.should_exit = true,
                 _ => {}
             }
         }
+    }
+
+    /// 获取当前选中的组件
+    fn get_current_input_field(&mut self) -> Option<&mut SettingComponent> {
+        for (_, components) in self.components.iter_mut() {
+            for component in components.iter_mut() {
+                if self.select_input_field == component.identifiers {
+                    return Some(component);
+                }
+            }
+        }
+        None
     }
 
     /// 切换到下一个输入框
@@ -174,8 +200,41 @@ impl SettingUI {
 
     /// 保存配置并退出窗口UI
     fn save_config(&mut self) {
-        let config = self.conifg.clone();
-        save_config(config).unwrap();
+        // 遍历所有组件，将其现在显示的值更新到配置中
+        for (_, line) in self.components.iter() {
+            for component in line.iter() {
+                match component.identifiers {
+                    AllSettingComponents::Model => {
+                        self.conifg.model = component.input_area_props.input_buffer.clone().into()
+                    }
+                    AllSettingComponents::Key => self.conifg.key = component.input_area_props.input_buffer.clone(),
+                    AllSettingComponents::SystemInstruction => {
+                        self.conifg.system_instruction = Some(component.input_area_props.input_buffer.clone())
+                    }
+                    AllSettingComponents::ResponseMineType => {
+                        self.conifg.options.response_mime_type = Some(component.input_area_props.input_buffer.clone())
+                    }
+                    AllSettingComponents::MaxOutputTokens => {
+                        self.conifg.options.max_output_tokens =
+                            Some(component.input_area_props.input_buffer.clone().parse().unwrap_or(0))
+                    }
+                    AllSettingComponents::Temperature => {
+                        self.conifg.options.temperature =
+                            Some(component.input_area_props.input_buffer.clone().parse().unwrap_or(0.0))
+                    }
+                    AllSettingComponents::TopP => {
+                        self.conifg.options.top_p =
+                            Some(component.input_area_props.input_buffer.clone().parse().unwrap_or(0.0))
+                    }
+                    AllSettingComponents::TopK => {
+                        self.conifg.options.top_k =
+                            Some(component.input_area_props.input_buffer.clone().parse().unwrap_or(0))
+                    }
+                }
+            }
+        }
+        save_config(self.conifg.to_owned()).unwrap();
+        self.update = true;
         self.should_exit = true;
     }
 
@@ -212,6 +271,8 @@ impl SettingUI {
             let h_areas = Layout::horizontal(h_list).split(area);
             for (j, component) in components.iter_mut().enumerate() {
                 let input_area = h_areas.clone()[j];
+                component.input_area_props.height = (input_area.height as usize).saturating_sub(2);
+                component.input_area_props.width = (input_area.width as usize).saturating_sub(2);
                 let block_style = if self.select_input_field == component.identifiers {
                     Style::default().fg(Color::Green)
                 } else {
@@ -221,14 +282,14 @@ impl SettingUI {
                     .title(component.label.as_str())
                     .style(block_style)
                     .borders(Borders::ALL);
-                let input_paragraph = Paragraph::new(component.input_area_props.input_buffer.clone())
+                let input_paragraph = Paragraph::new(component.input_area_props.should_show_text())
                     .block(block)
                     .style(Style::default().fg(Color::Yellow));
                 frame.render_widget(input_paragraph, input_area);
                 if self.select_input_field == component.identifiers {
                     frame.set_cursor_position(Position::new(
-                        input_area.x + component.input_area_props.charactor_index as u16 + 1,
-                        input_area.y + 1,
+                        input_area.x + component.input_area_props.cursor_position_x as u16 + 1,
+                        input_area.y + component.input_area_props.cursor_position_y as u16 + 1,
                     ));
                 }
             }
