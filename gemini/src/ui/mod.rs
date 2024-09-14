@@ -11,10 +11,10 @@ use gemini_api::model::blocking::Gemini;
 use gemini_api::param::LanguageModel;
 use props::{InputFieldCursorNeed, InputFieldProps};
 use ratatui::buffer::Buffer;
-use ratatui::layout::{Alignment, Position as CursorPosition, Rect};
+use ratatui::layout::{Alignment, Constraint, Position as CursorPosition, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::block::{Position as TitlePosition, Title};
-use ratatui::widgets::{List, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget};
+use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget};
 use ratatui::Frame;
 use ratatui::{
     crossterm::event::{self, Event, KeyEventKind},
@@ -22,7 +22,7 @@ use ratatui::{
         Constraint::{Fill, Length},
         Layout,
     },
-    widgets::{Block, Borders, ListItem},
+    widgets::{Block, Borders},
     DefaultTerminal,
 };
 use setting::SettingUI;
@@ -418,7 +418,7 @@ impl UI {
             // .title("Chat")
             .border_style(Style::default().fg(Color::Blue))
             .borders(Borders::ALL);
-        let items: Vec<ListItem> = self
+        let items: Vec<ChatMessage> = self
             .chat_history
             .iter()
             .map(|m| {
@@ -439,15 +439,32 @@ impl UI {
                 }
                 ChatMessage { message, ..m.clone() }
             })
-            .map(|m| (&m).into())
             .collect();
         // 保存最后一条记录的高度，用于计算滚动条位置
-        self.scroll_props.last_chat_history_height = items.clone().iter().last().map_or(0, |item| item.height()) as u16;
+        self.scroll_props.last_chat_history_height = items
+            .clone()
+            .iter()
+            .last()
+            .map_or(0, |item| item.message.lines().count() + 3)
+            as u16;
         // 计算当前聊天记录区域高度
-        self.scroll_props.chat_history_area_height = items.clone().iter().map(|item| item.height() as u16).sum();
-        let chat_list = List::new(items)
-            .block(Block::default().borders(Borders::LEFT | Borders::RIGHT | Borders::TOP))
-            .style(Style::default().fg(Color::White));
+        self.scroll_props.chat_history_area_height = items
+            .clone()
+            .iter()
+            .map(|item| item.message.lines().count() as u16 + 3)
+            .sum();
+
+        let layouts: Vec<Constraint> = items
+            .clone()
+            .iter()
+            .map(|item| {
+                if let Split = item.sender {
+                    Length(1)
+                } else {
+                    Length(item.message.lines().count() as u16 + 3)
+                }
+            })
+            .collect();
 
         let chat_area_x = chat_area.x;
         let chat_area_y = chat_area.y;
@@ -461,18 +478,20 @@ impl UI {
             // 滚动到最新的一条消息
             self.scroll_props.chat_history_area_height
         };
-        // 这块区域将不会被实际渲染
-        let chat_list_full_area = Rect::new(chat_area_x, chat_area_y, chat_area_width, height);
+        // 这块区域将不会被实际渲染，此处 y + 1 为去掉上边框, height - 1 为去掉下边框
+        let chat_list_full_area = Rect::new(chat_area_x, chat_area_y + 1, chat_area_width, height - 1);
         let mut chat_list_full_area_buf = Buffer::empty(chat_list_full_area);
 
-        // 将所有列表内容渲染到这块区域中
-        Widget::render(chat_list, chat_list_full_area, &mut chat_list_full_area_buf);
+        let areas = Layout::vertical(layouts).split(chat_list_full_area);
+        for (area, chat_message) in areas.iter().zip(items.iter()) {
+            chat_message.clone().render(*area, &mut chat_list_full_area_buf);
+        }
 
         let visible_content = chat_list_full_area_buf
             .content
             .into_iter()
             .skip((chat_area_width * self.scroll_props.scroll_offset) as usize) // 跳过滚动条滚动位置头部的区域
-            .take((chat_area_width * chat_area_height) as usize); // 取出可见区域的内容
+            .take((chat_area_width * (chat_area_height - 2)) as usize); // 取出可见区域的内容，此处 -2 为去掉上边框和下边框（受上面的 y + 1 和 height - 1 影响，此处必须如此）
 
         let buf = frame.buffer_mut();
         for (i, cell) in visible_content.enumerate() {

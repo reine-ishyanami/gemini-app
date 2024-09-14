@@ -1,69 +1,15 @@
 use ratatui::{
-    layout::Alignment,
-    style::{Color, Style},
-    text::Line,
-    widgets::ListItem,
+    layout::{
+        Constraint::{Fill, Length, Max},
+        Layout,
+    },
+    style::{Color, Stylize},
+    widgets::{Block, Borders, Paragraph, Widget},
 };
 
 use crate::model::ChatMessage;
 
 use crate::model::Sender::{Bot, Split, User};
-
-impl From<&ChatMessage> for ListItem<'_> {
-    fn from(value: &ChatMessage) -> Self {
-        let lines = match value.sender {
-            User => {
-                let message_lines = value.message.lines();
-                let mut lines = Vec::new();
-                // 用户发送标记以及是否成功标记
-                let line = if value.success {
-                    Line::from("✅👤").alignment(Alignment::Right)
-                } else {
-                    Line::from("❌👤").alignment(Alignment::Right)
-                };
-                lines.push(line);
-                // 用户发送的消息
-                for line in message_lines {
-                    lines.push(
-                        Line::from(line.to_owned())
-                            .alignment(Alignment::Right)
-                            .style(Style::default().fg(Color::Green)),
-                    );
-                }
-                // 消息发送时间
-                lines.push(
-                    Line::from(value.date_time.format("%H:%M:%S").to_string())
-                        .alignment(Alignment::Right)
-                        .style(Style::default().fg(Color::Cyan)),
-                );
-                lines
-            }
-            Bot => {
-                let message_lines = value.message.lines();
-                let mut lines = Vec::new();
-                let line = Line::from("🤖").alignment(Alignment::Left);
-                lines.push(line);
-                for line in message_lines {
-                    lines.push(
-                        Line::from(line.to_owned())
-                            .alignment(Alignment::Left)
-                            .style(Style::default().fg(Color::Red)),
-                    );
-                }
-                lines.push(
-                    Line::from(value.date_time.format("%H:%M:%S").to_string())
-                        .alignment(Alignment::Left)
-                        .style(Style::default().fg(Color::Cyan)),
-                );
-                lines
-            }
-            Split => {
-                vec![Line::from(String::new()).alignment(Alignment::Center)]
-            }
-        };
-        ListItem::new(lines)
-    }
-}
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum AllSettingComponents {
@@ -91,6 +37,59 @@ impl TryFrom<i32> for AllSettingComponents {
             x if x == AllSettingComponents::TopP as i32 => Ok(AllSettingComponents::TopP),
             x if x == AllSettingComponents::TopK as i32 => Ok(AllSettingComponents::TopK),
             _ => Err(()),
+        }
+    }
+}
+
+impl Widget for ChatMessage {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        match self.sender {
+            User => {
+                let [_, right] = Layout::horizontal([Max(10), Fill(1)]).areas(area);
+                let [top, time_area] = Layout::vertical([Fill(1), Length(1)]).areas(right);
+                // 渲染时间
+                let time_paragraph = Paragraph::new(self.date_time.format(" %H:%M:%S ").to_string())
+                    .style(Color::Blue)
+                    .right_aligned();
+                time_paragraph.render(time_area, buf);
+                let [content_area, avatar_area] = Layout::horizontal([Fill(1), Length(3)]).areas(top);
+                // 渲染头像
+                let avatar_paragraph = Paragraph::new(if self.success { "\n👤\n✅" } else { "\n👤\n❌" })
+                    .style(Color::Blue)
+                    .left_aligned();
+                avatar_paragraph.render(avatar_area, buf);
+                // 渲染消息内容
+                let message_block = if self.success {
+                    Block::default().green().borders(Borders::ALL)
+                } else {
+                    Block::default().red().borders(Borders::ALL)
+                };
+                let message_paragraph = Paragraph::new(self.message).block(message_block).left_aligned();
+                message_paragraph.render(content_area, buf);
+            }
+            Bot => {
+                let [left, _] = Layout::horizontal([Fill(1), Max(10)]).areas(area);
+                let [top, time_area] = Layout::vertical([Fill(1), Length(1)]).areas(left);
+                // 渲染时间
+                let time_paragraph = Paragraph::new(self.date_time.format(" %H:%M:%S ").to_string())
+                    .style(Color::Blue)
+                    .left_aligned();
+                time_paragraph.render(time_area, buf);
+                let [avatar_area, content_area] = Layout::horizontal([Length(3), Fill(1)]).areas(top);
+                // 渲染头像
+                let avatar_paragraph = Paragraph::new("\n🤖").style(Color::Blue).right_aligned();
+                avatar_paragraph.render(avatar_area, buf);
+                // 渲染消息内容
+                let message_block = Block::default().green().borders(Borders::ALL);
+                let message_paragraph = Paragraph::new(self.message).block(message_block).left_aligned();
+                message_paragraph.render(content_area, buf);
+            }
+            Split => {
+                Paragraph::new("").render(area, buf);
+            }
         }
     }
 }
