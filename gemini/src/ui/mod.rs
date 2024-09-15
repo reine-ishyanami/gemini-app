@@ -430,9 +430,17 @@ impl UI {
                 // 对长文本进行插入换行符号
                 let mut line_width = 0;
                 for (_, c) in m.message.clone().char_indices() {
-                    if line_width >= area_width {
+                    // 如果当前行宽度正好为组件宽度，则插入换行符
+                    if line_width == area_width {
                         message.push('\n');
                         line_width = 0;
+                    }
+                    // 如果当前字符宽度大于组件宽度，则在最后一个字符之前插入换行符插入换行符
+                    if line_width > area_width {
+                        let c = message.pop().unwrap();
+                        message.push('\n');
+                        message.push(c);
+                        line_width = if c.is_ascii() { 1 } else { 2 };
                     }
                     message.push(c);
                     line_width += if c.is_ascii() { 1 } else { 2 };

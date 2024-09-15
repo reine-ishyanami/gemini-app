@@ -1,11 +1,13 @@
+use std::cmp::Ordering::{Equal, Greater, Less};
+
 /// 输入区域相关属性
 #[derive(Default)]
 pub struct InputFieldProps {
     /// 当前指针位置，光标指向输入字符串中第几位
     pub input_buffer_index: usize,
     /// 光标坐标 x，每一个 ASCII 字符占1位，非 ASCII 字符占2位
-    /// 如果输入的文本为纯 ASCII 字符，则于 input_buffer_index 相等，如果包含非 ASCII 字符，则会比 input_buffer_index
-    /// 大
+    /// 如果输入的文本为纯 ASCII 字符，则于 input_buffer_index 相等，
+    /// 如果包含非 ASCII 字符，则会比 input_buffer_index 大
     pub cursor_position_x: usize,
     /// 光标坐标 y
     pub cursor_position_y: usize,
@@ -35,7 +37,9 @@ pub trait InputFieldCursorNeed {
     fn move_cursor_right(&mut self, c: char);
     /// 输入字符
     fn enter_char(&mut self, new_char: char);
-    /// 获取当前光标位置的字节索引
+    /// 获取当前光标位置的字节索引,
+    /// 如 input_buffer 为 "hello", input_buffer_index 为 1，则返回 1
+    /// 如 input_buffer 为 "你好", input_buffer_index 为 2，则返回 3
     fn byte_index(&self) -> usize;
     /// 获取输入框字符长度
     fn length(&self, str: String) -> usize;
@@ -49,6 +53,14 @@ pub trait InputFieldCursorNeed {
     fn reset_cursor(&mut self);
     /// 截取 input_buffer 字符串以供UI展示
     fn sub_input_buffer(&self, start: usize, count: usize) -> String;
+    /// 计算字符宽度
+    fn c_len(c: char) -> usize {
+        if c.is_ascii() {
+            1
+        } else {
+            2
+        }
+    }
 }
 
 impl InputFieldCursorNeed for InputFieldProps {
@@ -76,25 +88,18 @@ impl InputFieldCursorNeed for InputFieldProps {
         self.input_buffer_index = self.clamp_cursor(cursor_moved_left);
         // 光标有变化
         if origin_cursor_index != self.input_buffer_index {
-            self.cursor_position_x = if c.is_ascii() {
-                self.cursor_position_x.saturating_sub(1)
-            } else {
-                self.cursor_position_x.saturating_sub(2)
-            }
+            self.cursor_position_x = self.cursor_position_x.saturating_sub(Self::c_len(c))
         }
     }
 
     fn move_cursor_right(&mut self, c: char) {
         let origin_cursor_index = self.input_buffer_index;
+        // 指针位置指向下一位
         let cursor_moved_right = self.input_buffer_index.saturating_add(1);
         self.input_buffer_index = self.clamp_cursor(cursor_moved_right);
         // 光标有变化
         if origin_cursor_index != self.input_buffer_index {
-            self.cursor_position_x = if c.is_ascii() {
-                self.cursor_position_x.saturating_add(1)
-            } else {
-                self.cursor_position_x.saturating_add(2)
-            }
+            self.cursor_position_x = self.cursor_position_x.saturating_add(Self::c_len(c))
         }
     }
 
@@ -113,7 +118,7 @@ impl InputFieldCursorNeed for InputFieldProps {
     }
 
     fn length(&self, str: String) -> usize {
-        str.chars().map(|c| if c.is_ascii() { 1 } else { 2 }).sum()
+        str.chars().map(Self::c_len).sum()
     }
 
     fn delete_pre_char(&mut self) {
@@ -140,8 +145,8 @@ impl InputFieldCursorNeed for InputFieldProps {
         }
     }
 
+    // 限制光标位置，将光标位置限制在0到字符总长度之间
     fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
-        // 限制光标位置，将光标位置限制在0到字符总长度之间
         new_cursor_pos.clamp(0, self.input_buffer.chars().count())
     }
 
@@ -154,18 +159,23 @@ impl InputFieldCursorNeed for InputFieldProps {
         let mut result = String::new();
         let mut char_count = 0;
 
-        for (i, c) in self.input_buffer.char_indices() {
+        // 记录当前遍历过的字符总宽度
+        let mut j = 0;
+        for (_, c) in self.input_buffer.char_indices() {
             // 当我们达到起始字符索引时开始截取
-            if i >= start && char_count < count {
+            if j >= start && char_count < count {
                 result.push(c);
-                char_count += if c.is_ascii() { 1 } else { 2 };
+                char_count += Self::c_len(c);
             }
+            // 每遍历完递增宽度
+            j += Self::c_len(c);
             // 当我们截取了足够的字符后停止
             if char_count == count {
                 break;
             }
+            // 当我们超过了字符总长度时停止
             if char_count > count {
-                result.pop();
+                result.push(' ');
                 break;
             }
         }
@@ -175,9 +185,10 @@ impl InputFieldCursorNeed for InputFieldProps {
     fn should_show_text(&self) -> String {
         match self.height.cmp(&1) {
             // 高度为 0
-            std::cmp::Ordering::Less => "".into(),
+            Less => "".into(),
             // 单行输入框
-            std::cmp::Ordering::Equal => {
+            Equal => {
+                // 根据指针位置截取内容展示，输入框内容长度大于组件宽度，并且指针位置截取的宽度大于组件宽度
                 if self.length(self.input_buffer.clone()) > self.width && self.cursor_position_x > self.width {
                     self.sub_input_buffer(self.cursor_position_x - self.width, self.cursor_position_x)
                 } else {
@@ -185,7 +196,31 @@ impl InputFieldCursorNeed for InputFieldProps {
                 }
             }
             // 多行输入框
-            std::cmp::Ordering::Greater => self.input_buffer.clone(),
+            Greater => {
+                let mut message = String::new();
+                // 对长文本进行插入换行符号
+                let mut line_width = 0;
+                for (_, c) in self.input_buffer.clone().char_indices() {
+                    // 如果当前行宽度正好为组件宽度，则插入换行符
+                    if line_width == self.width {
+                        message.push('\n');
+                        line_width = 0;
+                    }
+                    // 如果当前字符宽度大于组件宽度，则在最后一个字符之前插入换行符插入换行符
+                    if line_width > self.width {
+                        let c = message.pop().unwrap();
+                        message.push('\n');
+                        message.push(c);
+                        line_width = Self::c_len(c);
+                    }
+                    message.push(c);
+                    line_width += Self::c_len(c);
+                    if c == '\n' {
+                        line_width = 0;
+                    }
+                }
+                message
+            }
         }
     }
 
@@ -197,9 +232,6 @@ impl InputFieldCursorNeed for InputFieldProps {
             self.input_buffer.insert(index, '\n');
             // 指向右移
             self.move_cursor_right('\n');
-            // TODO: 不应该在此处修改光标坐标
-            // self.cursor_position_y += 1;
-            // self.cursor_position_x = 0;
         }
     }
 }

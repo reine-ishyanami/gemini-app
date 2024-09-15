@@ -6,7 +6,7 @@ use ratatui::{
         Layout, Position, Rect,
     },
     style::{Color, Style},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
 
@@ -271,19 +271,24 @@ impl SettingUI {
             let h_areas = Layout::horizontal(h_list).split(area);
             for (j, component) in components.iter_mut().enumerate() {
                 let input_area = h_areas.clone()[j];
+                // 设置输入框高度
                 component.input_area_props.height = (input_area.height as usize).saturating_sub(2);
+                // 设置输入框宽度
                 component.input_area_props.width = (input_area.width as usize).saturating_sub(2);
+                // 预设输入框边框颜色，当输入框被选中时显示为绿色，否则显示为白色
                 let block_style = if self.select_input_field == component.identifiers {
                     Style::default().fg(Color::Green)
                 } else {
                     Style::default().fg(Color::White)
                 };
+                // 预设输入框边框
                 let block = Block::default()
                     .title(component.label.as_str())
                     .style(block_style)
                     .borders(Borders::ALL);
                 let input_paragraph = Paragraph::new(component.input_area_props.should_show_text())
                     .block(block)
+                    .wrap(Wrap { trim: false })
                     .style(Style::default().fg(Color::Yellow));
                 frame.render_widget(input_paragraph, input_area);
                 if self.select_input_field == component.identifiers {
