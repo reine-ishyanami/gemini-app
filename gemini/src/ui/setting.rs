@@ -29,7 +29,7 @@ pub struct SettingUI {
 
 pub struct SettingComponent {
     /// 标识符
-    identifiers: AllSettingComponents,
+    identifier: AllSettingComponents,
     /// 提示文本
     label: String,
     /// 布局属性
@@ -52,7 +52,7 @@ impl SettingUI {
                     Length(3),
                     vec![
                         SettingComponent {
-                            identifiers: AllSettingComponents::Model,
+                            identifier: AllSettingComponents::Model,
                             label: "model".into(),
                             layout: Length(30),
                             input_area_props: InputFieldProps {
@@ -61,7 +61,7 @@ impl SettingUI {
                             },
                         },
                         SettingComponent {
-                            identifiers: AllSettingComponents::Key,
+                            identifier: AllSettingComponents::Key,
                             label: "key".into(),
                             layout: Fill(20),
                             input_area_props: InputFieldProps {
@@ -74,7 +74,7 @@ impl SettingUI {
                 (
                     Min(10),
                     vec![SettingComponent {
-                        identifiers: AllSettingComponents::SystemInstruction,
+                        identifier: AllSettingComponents::SystemInstruction,
                         label: "system instruction".into(),
                         layout: Fill(1),
                         input_area_props: InputFieldProps {
@@ -87,7 +87,7 @@ impl SettingUI {
                     Length(3),
                     vec![
                         SettingComponent {
-                            identifiers: AllSettingComponents::ResponseMineType,
+                            identifier: AllSettingComponents::ResponseMineType,
                             label: "response mine type".into(),
                             layout: Fill(1),
                             input_area_props: InputFieldProps {
@@ -96,7 +96,7 @@ impl SettingUI {
                             },
                         },
                         SettingComponent {
-                            identifiers: AllSettingComponents::MaxOutputTokens,
+                            identifier: AllSettingComponents::MaxOutputTokens,
                             label: "max output tokens".into(),
                             layout: Fill(1),
                             input_area_props: InputFieldProps {
@@ -110,7 +110,7 @@ impl SettingUI {
                     Length(3),
                     vec![
                         SettingComponent {
-                            identifiers: AllSettingComponents::Temperature,
+                            identifier: AllSettingComponents::Temperature,
                             label: "temperature".into(),
                             layout: Fill(1),
                             input_area_props: InputFieldProps {
@@ -119,7 +119,7 @@ impl SettingUI {
                             },
                         },
                         SettingComponent {
-                            identifiers: AllSettingComponents::TopP,
+                            identifier: AllSettingComponents::TopP,
                             label: "top p".into(),
                             layout: Min(5),
                             input_area_props: InputFieldProps {
@@ -128,7 +128,7 @@ impl SettingUI {
                             },
                         },
                         SettingComponent {
-                            identifiers: AllSettingComponents::TopK,
+                            identifier: AllSettingComponents::TopK,
                             label: "top k".into(),
                             layout: Min(5),
                             input_area_props: InputFieldProps {
@@ -183,7 +183,7 @@ impl SettingUI {
     fn get_current_input_field(&mut self) -> Option<&mut SettingComponent> {
         for (_, components) in self.components.iter_mut() {
             for component in components.iter_mut() {
-                if self.select_input_field == component.identifiers {
+                if self.select_input_field == component.identifier {
                     return Some(component);
                 }
             }
@@ -203,7 +203,7 @@ impl SettingUI {
         // 遍历所有组件，将其现在显示的值更新到配置中
         for (_, line) in self.components.iter() {
             for component in line.iter() {
-                match component.identifiers {
+                match component.identifier {
                     AllSettingComponents::Model => {
                         self.conifg.model = component.input_area_props.input_buffer.clone().into()
                     }
@@ -276,7 +276,7 @@ impl SettingUI {
                 // 设置输入框宽度
                 component.input_area_props.width = (input_area.width as usize).saturating_sub(2);
                 // 预设输入框边框颜色，当输入框被选中时显示为绿色，否则显示为白色
-                let block_style = if self.select_input_field == component.identifiers {
+                let block_style = if self.select_input_field == component.identifier {
                     Style::default().fg(Color::Green)
                 } else {
                     Style::default().fg(Color::White)
@@ -291,11 +291,9 @@ impl SettingUI {
                     .wrap(Wrap { trim: false })
                     .style(Style::default().fg(Color::Yellow));
                 frame.render_widget(input_paragraph, input_area);
-                if self.select_input_field == component.identifiers {
-                    frame.set_cursor_position(Position::new(
-                        input_area.x + component.input_area_props.cursor_position_x as u16 + 1,
-                        input_area.y + component.input_area_props.cursor_position_y as u16 + 1,
-                    ));
+                if self.select_input_field == component.identifier {
+                    let (x, y) = component.input_area_props.get_cursor_position();
+                    frame.set_cursor_position(Position::new(input_area.x + x as u16 + 1, input_area.y + y as u16 + 1));
                 }
             }
         }

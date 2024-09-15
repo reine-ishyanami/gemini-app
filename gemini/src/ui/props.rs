@@ -25,6 +25,8 @@ pub trait InputFieldCursorNeed {
     fn should_show_text(&self) -> String;
     /// 处理回车按键事件
     fn handle_enter_key(&mut self);
+    /// 获取鼠标指针位置
+    fn get_cursor_position(&self) -> (usize, usize);
     /// 定位到字符串末尾
     fn end_of_cursor(&mut self);
     /// 获取当前光标指向的字符
@@ -233,5 +235,20 @@ impl InputFieldCursorNeed for InputFieldProps {
             // 指向右移
             self.move_cursor_right('\n');
         }
+    }
+
+    fn get_cursor_position(&self) -> (usize, usize) {
+        (
+            if self.cursor_position_x > self.width {
+                self.width
+            } else {
+                self.cursor_position_x
+            },
+            if self.cursor_position_y > self.height {
+                self.height
+            } else {
+                self.cursor_position_y
+            },
+        )
     }
 }

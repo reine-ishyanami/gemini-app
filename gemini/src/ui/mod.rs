@@ -405,9 +405,10 @@ impl UI {
 
         frame.render_widget(input_paragraph, input_area);
         if self.focus_component == MainFocusComponent::InputArea {
+            let (x, y) = self.input_area_component.get_cursor_position();
             frame.set_cursor_position(CursorPosition::new(
-                input_area.x + self.input_area_component.cursor_position_x as u16 + 1,
-                input_area.y + self.input_area_component.cursor_position_y as u16 + 1,
+                input_area.x + x as u16 + 1,
+                input_area.y + y as u16 + 1,
             ));
         }
     }
