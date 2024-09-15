@@ -310,9 +310,12 @@ impl UI {
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
         // 计算显示区域宽度
-        // 这里 -2 的原因是输入框中具有两侧的的 1px 边框，此闭包用于限制每一行文本的最大宽度，
-        // 如果大于这个数值，可能在文本需要换行时产生丢失文本的情况
-        let chat_area_width = || area.width as usize - 2 - 10;
+        // - 10 留出左右空白区域
+        // -2 文本段落中的左右边框
+        // -3 输入框左右两侧头像部分
+        // -1 对齐中文文本
+        // 如果没有减去这4个宽度，文本可能有显示问题，可以再减去任意宽度，以使得在输出的列表文本右侧留出对应宽度空白
+        let chat_area_width = || area.width as usize - 10 - 2 - 3 - 1;
         let [header_area, chat_area, input_area] = Layout::vertical([Length(1), Fill(1), Length(3)]).areas(area);
         self.render_header_area(frame, header_area);
         // 输入区域（底部）

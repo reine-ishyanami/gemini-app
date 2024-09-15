@@ -4,7 +4,7 @@ use ratatui::{
         Layout,
     },
     style::{Color, Stylize},
-    widgets::{Block, Borders, Paragraph, Widget},
+    widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
 use crate::model::ChatMessage;
@@ -57,9 +57,7 @@ impl Widget for ChatMessage {
                 time_paragraph.render(time_area, buf);
                 let [content_area, avatar_area] = Layout::horizontal([Fill(1), Length(3)]).areas(top);
                 // 渲染头像
-                let avatar_paragraph = Paragraph::new(if self.success { "\n👤\n✅" } else { "\n👤\n❌" })
-                    .style(Color::Blue)
-                    .left_aligned();
+                let avatar_paragraph = Paragraph::new("\n👤").style(Color::Blue).left_aligned();
                 avatar_paragraph.render(avatar_area, buf);
                 // 渲染消息内容
                 let message_block = if self.success {
@@ -67,7 +65,11 @@ impl Widget for ChatMessage {
                 } else {
                     Block::default().red().borders(Borders::ALL)
                 };
-                let message_paragraph = Paragraph::new(self.message).block(message_block).left_aligned();
+                let message_paragraph = Paragraph::new(self.message)
+                    .wrap(Wrap { trim: false })
+                    .style(Color::Blue)
+                    .block(message_block)
+                    .left_aligned();
                 message_paragraph.render(content_area, buf);
             }
             Bot => {
@@ -84,7 +86,11 @@ impl Widget for ChatMessage {
                 avatar_paragraph.render(avatar_area, buf);
                 // 渲染消息内容
                 let message_block = Block::default().green().borders(Borders::ALL);
-                let message_paragraph = Paragraph::new(self.message).block(message_block).left_aligned();
+                let message_paragraph = Paragraph::new(self.message)
+                    .wrap(Wrap { trim: false })
+                    .style(Color::Yellow)
+                    .block(message_block)
+                    .left_aligned();
                 message_paragraph.render(content_area, buf);
             }
             Split => {
