@@ -9,7 +9,7 @@ use chrono::Local;
 use gemini_api::body::request::GenerationConfig;
 use gemini_api::model::blocking::Gemini;
 use gemini_api::param::LanguageModel;
-use props::{InputFieldCursorNeed, InputFieldProps};
+use props::{InputTextComponent, TextField};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Position as CursorPosition, Rect};
 use ratatui::style::{Color, Style};
@@ -47,7 +47,7 @@ pub struct UI {
     /// 当前聚焦的组件
     focus_component: MainFocusComponent,
     /// 输入区域组件
-    input_area_component: InputFieldProps,
+    input_area_component: TextField,
     scroll_props: ScrollProps,
     /// 当前窗口
     current_windows: CurrentWindows,
@@ -94,8 +94,6 @@ pub struct ScrollProps {
 impl UI {
     /// 启动UI
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        // 输入框高度永定为 1
-        self.input_area_component.height = 1;
         let (tx, rx) = mpsc::channel();
         self.restore_or_new_gemini(None);
         while !self.should_exit {
