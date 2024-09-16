@@ -13,8 +13,8 @@ use ratatui::{
 use crate::store::{read_config, save_config};
 
 use super::{
-    component::AllSettingComponents,
-    props::{InputTextComponent, TextArea},
+    component::{InputTextComponent, TextArea},
+    enum_from::AllSettingComponents,
     TextField,
 };
 

@@ -1,15 +1,16 @@
 mod component;
-mod props;
+mod enum_from;
 mod setting;
+mod widget;
 
 use std::sync::mpsc;
 
 use anyhow::Result;
 use chrono::Local;
+use component::{InputTextComponent, TextField};
 use gemini_api::body::request::GenerationConfig;
 use gemini_api::model::blocking::Gemini;
 use gemini_api::param::LanguageModel;
-use props::{InputTextComponent, TextField};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Position as CursorPosition, Rect};
 use ratatui::style::{Color, Style};
