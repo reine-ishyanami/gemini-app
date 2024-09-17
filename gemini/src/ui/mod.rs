@@ -193,7 +193,7 @@ impl UI {
                             .move_cursor_right(self.input_area_component.get_next_char()),
                         event::KeyCode::Up => self.up(),
                         event::KeyCode::Down => self.down(),
-                        event::KeyCode::Home => self.input_area_component.reset_cursor(),
+                        event::KeyCode::Home => self.input_area_component.home_of_cursor(),
                         event::KeyCode::End => self.input_area_component.end_of_cursor(),
                         event::KeyCode::Delete => self.input_area_component.delete_suf_char(),
                         event::KeyCode::Char(x) => self.input_area_component.enter_char(x),
@@ -259,7 +259,7 @@ impl UI {
                 let _ = tx.send(self.input_area_component.input_buffer.clone());
             }
             self.input_area_component.input_buffer.clear();
-            self.input_area_component.reset_cursor();
+            self.input_area_component.home_of_cursor();
             // 滚动到最新的一条消息
             self.scroll_props.scroll_offset = self.max_scroll_offset();
         }

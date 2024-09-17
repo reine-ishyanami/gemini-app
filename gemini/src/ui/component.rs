@@ -10,6 +10,16 @@ pub trait InputTextComponent {
     fn get_cursor_position(&self) -> (usize, usize);
     /// 定位到字符串末尾
     fn end_of_cursor(&mut self);
+    /// 将光标多行文本的最末端
+    fn end_of_multiline(&mut self) {
+        self.end_of_cursor();
+    }
+    /// 定位到字符串开头
+    fn home_of_cursor(&mut self);
+    /// 将光标多行文本的最前端
+    fn home_of_multiline(&mut self) {
+        self.home_of_cursor();
+    }
     /// 获取当前光标指向的字符
     fn get_current_char(&self) -> char;
     /// 获取当前光标的下一个字符
@@ -32,10 +42,6 @@ pub trait InputTextComponent {
     fn delete_pre_char(&mut self);
     /// 删除当前光标位置的后一个字符
     fn delete_suf_char(&mut self);
-    /// 限制光标位置
-    fn clamp_cursor(&self, new_cursor_pos: usize) -> usize;
-    /// 重置光标位置
-    fn reset_cursor(&mut self);
     /// 设置宽高
     fn set_width_height(&mut self, width: usize, height: usize);
     /// 获取输入框内容
@@ -46,7 +52,10 @@ pub trait InputTextComponent {
 
 /// 计算字符宽度
 fn c_len(c: char) -> usize {
-    if c.is_ascii() {
+    let width_0 = ['\n', '\0'];
+    if width_0.contains(&c) {
+        0
+    } else if c.is_ascii() {
         1
     } else {
         2
@@ -86,18 +95,18 @@ impl InputTextComponent for TextField {
     }
 
     fn get_cursor_position(&self) -> (usize, usize) {
-        (
-            if self.cursor_position_x > self.width {
-                self.width
-            } else {
-                self.cursor_position_x
-            },
-            0,
-        )
+        (self.cursor_position_x.clamp(0, self.width), 0)
     }
 
     fn end_of_cursor(&mut self) {
         self.input_buffer_index = self.input_buffer.chars().count();
+        // 指针 x 坐标
+        self.cursor_position_x = length(self.input_buffer.clone());
+    }
+
+    fn home_of_cursor(&mut self) {
+        self.input_buffer_index = 0;
+        self.cursor_position_x = 0;
     }
 
     fn get_current_char(&self) -> char {
@@ -171,25 +180,12 @@ impl InputTextComponent for TextField {
         }
     }
 
-    // 限制光标位置，将光标位置限制在0到字符总长度之间
-    fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
-        new_cursor_pos.clamp(0, self.input_buffer.chars().count())
-    }
-
-    fn reset_cursor(&mut self) {
-        self.input_buffer_index = 0;
-        self.cursor_position_x = 0;
-    }
-
     fn set_width_height(&mut self, width: usize, _height: usize) {
         self.width = width;
         // self.height = height;
         // 调整指针位置
         if !self.align_right {
             self.end_of_cursor();
-            // 指针 x 坐标
-            self.cursor_position_x = length(self.input_buffer.lines().last().unwrap_or("").into());
-            // 指针 y 坐标
             self.align_right = true;
         }
     }
@@ -227,6 +223,11 @@ impl TextField {
         }
         result
     }
+
+    /// 限制光标位置，将光标位置限制在0到字符总长度之间
+    fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
+        new_cursor_pos.clamp(0, self.input_buffer.chars().count())
+    }
 }
 
 /// 多行输入框相关属性
@@ -250,38 +251,47 @@ pub struct TextArea {
     pub each_line_max_width: Vec<usize>,
     /// 是否已经初始化过指针位置
     pub align_right: bool,
+    /// 指针总偏移量
+    pub offset: isize,
 }
 
 impl InputTextComponent for TextArea {
     fn should_show_text(&self) -> String {
-        self.split_overflow_line_to_a_new_line()
-    }
-
-    fn handle_enter_key(&mut self) {
-        // 插入换行符
-        let index = self.byte_index();
-        self.input_buffer.insert(index, '\n');
-        // 指向右移
-        self.move_cursor_right('\n');
+        let text = self.split_overflow_line_to_a_new_line();
+        text.replace("\n\n", "\n")
     }
 
     fn get_cursor_position(&self) -> (usize, usize) {
         (
-            if self.cursor_position_x > self.width {
-                self.width
-            } else {
-                self.cursor_position_x
-            },
-            if self.cursor_position_y > self.height {
-                self.height
-            } else {
-                self.cursor_position_y
-            },
+            self.cursor_position_x.clamp(0, self.width),
+            self.cursor_position_y.clamp(0, self.height),
         )
     }
 
     fn end_of_cursor(&mut self) {
+        self.end_of_multiline();
+        self.update_offset(0);
+    }
+
+    fn end_of_multiline(&mut self) {
         self.input_buffer_index = self.input_buffer.chars().count();
+        // 指针 x 坐标
+        self.cursor_position_x = *self.each_line_max_width.last().unwrap_or(&0);
+        // 指针 y 坐标
+        self.cursor_position_y = self.each_line_max_width.len() - 1;
+        self.update_offset(0);
+    }
+
+    fn home_of_cursor(&mut self) {
+        self.home_of_multiline();
+        self.update_offset(0);
+    }
+
+    fn home_of_multiline(&mut self) {
+        self.input_buffer_index = 0;
+        self.cursor_position_y = 0;
+        self.cursor_position_x = 0;
+        self.update_offset(0);
     }
 
     fn get_current_char(&self) -> char {
@@ -297,11 +307,21 @@ impl InputTextComponent for TextArea {
     }
 
     fn move_cursor_left(&mut self, c: char) {
-        todo!()
+        if self.cursor_position_y != 0 || self.cursor_position_x != 0 {
+            self.input_buffer_index = self.input_buffer_index.saturating_sub(1);
+            // 减去字符宽度
+            self.update_offset(0 - c_len(c) as isize);
+        }
     }
 
     fn move_cursor_right(&mut self, c: char) {
-        todo!()
+        if self.cursor_position_y != self.each_line_max_width.len() - 1
+            || self.cursor_position_x != *self.each_line_max_width.last().unwrap_or(&0)
+        {
+            self.input_buffer_index = self.input_buffer_index.saturating_add(1);
+            // 加上字符宽度
+            self.update_offset(c_len(c) as isize);
+        }
     }
 
     fn enter_char(&mut self, new_char: char) {
@@ -319,34 +339,59 @@ impl InputTextComponent for TextArea {
     }
 
     fn delete_pre_char(&mut self) {
-        todo!()
+        let is_not_cursor_leftmost = self.input_buffer_index != 0;
+        if is_not_cursor_leftmost {
+            let delete_char = self.get_current_char();
+            let current_index = self.input_buffer_index;
+            let from_left_to_current_index = current_index - 1;
+            let before_char_to_delete = self.input_buffer.chars().take(from_left_to_current_index);
+            let after_char_to_delete = self.input_buffer.chars().skip(current_index);
+            self.input_buffer = before_char_to_delete.chain(after_char_to_delete).collect();
+            if delete_char != '\n' {
+                self.move_cursor_left(delete_char);
+            }
+        }
     }
 
     fn delete_suf_char(&mut self) {
-        todo!()
-    }
-
-    fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
-        todo!()
-    }
-
-    fn reset_cursor(&mut self) {
-        todo!()
+        let is_not_cursor_rightmost = self.input_buffer_index != self.input_buffer.chars().count();
+        if is_not_cursor_rightmost {
+            let current_index = self.input_buffer_index;
+            let from_left_to_current_index = current_index + 1;
+            let before_char_to_delete = self.input_buffer.chars().take(current_index);
+            let after_char_to_delete = self.input_buffer.chars().skip(from_left_to_current_index);
+            self.input_buffer = before_char_to_delete.chain(after_char_to_delete).collect();
+        }
     }
 
     fn set_width_height(&mut self, width: usize, height: usize) {
         self.width = width;
         self.height = height;
+        // 将长文本分行
         let new_str = self.split_overflow_line_to_a_new_line();
+        // 计算每行最大宽度，如果存在 \n\n , 则默认为 1 行空行
         self.each_line_max_width = new_str.lines().map(|line| length(line.into())).collect();
-        // 调整指针位置
+        // 调整指针位置，如果是第一次进入菜单绘制组件，则重新调整指针位置
         if !self.align_right {
-            self.end_of_cursor();
-            // 指针 x 坐标
-            self.cursor_position_x = *self.each_line_max_width.last().unwrap_or(&0);
-            // 指针 y 坐标
-            self.cursor_position_y = new_str.lines().count().saturating_sub(1);
+            self.end_of_multiline();
+            self.update_offset(0);
             self.align_right = true;
+            return;
+        }
+        // 拿到当前坐标总位置
+        let mut cursor_pos = self.offset as usize;
+        // 调整指针位置
+        self.cursor_position_x = 0;
+        self.cursor_position_y = 0;
+        for len in self.each_line_max_width.clone() {
+            // // 如果本行宽度为 0，则表示换行
+            if cursor_pos > len {
+                cursor_pos -= len;
+                self.cursor_position_y += 1;
+            } else {
+                self.cursor_position_x = cursor_pos;
+                break;
+            }
         }
     }
 
@@ -361,12 +406,15 @@ impl TextArea {
         let mut message = String::new();
         // 对长文本进行插入换行符号
         let mut line_width = 0;
-        let width = if self.width % 2 == 0 {
-            self.width
-        } else {
-            self.width - 1
-        };
+        let width = self.width;
+        // 每一行最后的字符是换行符
         for (_, c) in self.input_buffer.clone().char_indices() {
+            if c == '\n' {
+                message.push('\n');
+                line_width = 0;
+            }
+            message.push(c);
+            line_width += c_len(c);
             // 如果当前行宽度正好为组件宽度，则插入换行符
             if line_width == width {
                 message.push('\n');
@@ -379,12 +427,17 @@ impl TextArea {
                 message.push(c);
                 line_width = c_len(c);
             }
-            message.push(c);
-            line_width += c_len(c);
-            if c == '\n' {
-                line_width = 0;
-            }
         }
         message
+    }
+
+    /// 指针总指向的长度
+    fn update_offset(&mut self, offset: isize) {
+        self.offset = 0;
+        for i in 0..self.cursor_position_y {
+            self.offset += (*self.each_line_max_width.get(i).unwrap_or(&0)) as isize;
+        }
+        self.offset += self.cursor_position_x as isize;
+        self.offset += offset;
     }
 }

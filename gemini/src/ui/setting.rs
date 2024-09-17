@@ -1,6 +1,6 @@
 use gemini_api::model::blocking::Gemini;
 use ratatui::{
-    crossterm::event::{self, Event, KeyEventKind},
+    crossterm::event::{self, Event, KeyEventKind, KeyModifiers},
     layout::{
         Constraint::{self, Fill, Length, Min},
         Layout, Position, Rect,
@@ -166,8 +166,20 @@ impl SettingUI {
                     .move_cursor_right(component.input_component.get_next_char()),
                 event::KeyCode::Up => component.input_component.move_cursor_up(),
                 event::KeyCode::Down => component.input_component.move_cursor_down(),
-                event::KeyCode::Home => component.input_component.reset_cursor(),
-                event::KeyCode::End => component.input_component.end_of_cursor(),
+                event::KeyCode::Home => {
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        component.input_component.home_of_multiline()
+                    } else {
+                        component.input_component.home_of_cursor()
+                    }
+                }
+                event::KeyCode::End => {
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        component.input_component.end_of_multiline()
+                    } else {
+                        component.input_component.end_of_cursor()
+                    }
+                }
                 event::KeyCode::Char(x) => component.input_component.enter_char(x),
                 event::KeyCode::Enter => component.input_component.handle_enter_key(),
                 event::KeyCode::Tab => self.next_input_field(),
