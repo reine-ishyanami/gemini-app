@@ -15,6 +15,12 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -->
 
+# Version 0.3.0 (2024-09-19)
+
+1. add gemini setting for chat with gemini server
+
+2. (todo) fix the textarea cursor bug
+
 # Version 0.2.2 (2024-09-11)
 
 test submodules split

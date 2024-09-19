@@ -28,3 +28,5 @@ This is a Rust library for interacting with the Gemini API. It provides a simple
 3. download the application from release page or build it from source.
 
 4. enter something and press enter to ask the gemini.
+
+5. press tab to focus other components. like `input`, `esc`, `set` and so on.
