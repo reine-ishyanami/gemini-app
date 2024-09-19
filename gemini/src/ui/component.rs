@@ -29,7 +29,7 @@ pub(crate) trait InputTextComponent {
     /// 向左移动光标
     fn move_cursor_left(&mut self, c: char);
     /// 向右移动光标
-    fn move_cursor_right(&mut self, c: char, is_input: bool);
+    fn move_cursor_right(&mut self, c: char);
     /// 向上移动光标
     fn move_cursor_up(&mut self) {}
     /// 向下移动光标
@@ -48,23 +48,25 @@ pub(crate) trait InputTextComponent {
     fn set_width_height(&mut self, width: usize, height: usize);
     /// 获取输入框内容
     fn get_content(&self) -> String;
+    /// 清空文本
+    fn clear(&mut self);
 }
 
 /// 单行输入框相关属性
 #[derive(Default)]
 pub(crate) struct TextField {
     /// 当前指针位置，光标指向输入字符串中第几位
-    pub input_buffer_index: usize,
+    input_buffer_index: usize,
     /// 光标坐标 x，每一个 ASCII 字符占1位，非 ASCII 字符占2位
     /// 如果输入的文本为纯 ASCII 字符，则于 input_buffer_index 相等，
     /// 如果包含非 ASCII 字符，则会比 input_buffer_index 大
-    pub cursor_position_x: usize,
+    cursor_position_x: usize,
     /// 输入框内容
-    pub input_buffer: String,
+    input_buffer: String,
     /// 输入框宽度
-    pub width: usize,
+    width: usize,
     /// 是否已经初始化过指针位置
-    pub align_right: bool,
+    align_right: bool,
 }
 
 impl InputTextComponent for TextField {
@@ -114,7 +116,7 @@ impl InputTextComponent for TextField {
         }
     }
 
-    fn move_cursor_right(&mut self, c: char, _is_input: bool) {
+    fn move_cursor_right(&mut self, c: char) {
         let origin_cursor_index = self.input_buffer_index;
         // 指针位置指向下一位
         let cursor_moved_right = self.input_buffer_index.saturating_add(1);
@@ -128,7 +130,7 @@ impl InputTextComponent for TextField {
     fn enter_char(&mut self, new_char: char) {
         let index = self.byte_index();
         self.input_buffer.insert(index, new_char);
-        self.move_cursor_right(new_char, true);
+        self.move_cursor_right(new_char);
     }
 
     fn byte_index(&self) -> usize {
@@ -165,7 +167,6 @@ impl InputTextComponent for TextField {
 
     fn set_width_height(&mut self, width: usize, _height: usize) {
         self.width = width;
-        // self.height = height;
         // 调整指针位置
         if !self.align_right {
             self.end_of_cursor();
@@ -176,9 +177,24 @@ impl InputTextComponent for TextField {
     fn get_content(&self) -> String {
         self.input_buffer.clone()
     }
+
+    fn clear(&mut self) {
+        self.input_buffer.clear();
+        self.input_buffer_index = 0;
+        self.cursor_position_x = 0;
+        self.home_of_cursor();
+    }
 }
 
 impl TextField {
+    // 初始化
+    pub fn new(input_buffer: String) -> Self {
+        TextField {
+            input_buffer,
+            ..Default::default()
+        }
+    }
+
     /// 截取 input_buffer 字符串以供 UI 展示
     fn sub_input_buffer(&self, start: usize, count: usize) -> String {
         let mut result = String::new();
@@ -217,25 +233,27 @@ impl TextField {
 #[derive(Default)]
 pub(crate) struct TextArea {
     /// 当前指针位置，光标指向输入字符串中第几位
-    pub input_buffer_index: usize,
+    input_buffer_index: usize,
     /// y 指向文本行的坐标，每一个 ASCII 字符占1位，非 ASCII 字符占2位
     /// 如果输入的文本为纯 ASCII 字符，则于 input_buffer_index 相等，
     /// 如果包含非 ASCII 字符，则会比 input_buffer_index 大
-    pub cursor_position_x: usize,
+    cursor_position_x: usize,
     /// 第 y 行文本
-    pub cursor_position_y: usize,
+    cursor_position_y: usize,
     /// 输入框内容
-    pub input_buffer: String,
+    input_buffer: String,
     /// 输入框宽度
-    pub width: usize,
+    width: usize,
     /// 输入框高度
-    pub height: usize,
+    height: usize,
     /// 每行的字符串
-    pub each_line_string: Vec<String>,
+    each_line_string: Vec<String>,
     /// 是否已经初始化过指针位置
-    pub align_right: bool,
+    align_right: bool,
     /// 指针总偏移量
-    pub offset: isize,
+    offset: isize,
+    /// 是否输入字符
+    is_input: bool,
 }
 
 impl InputTextComponent for TextArea {
@@ -362,7 +380,7 @@ impl InputTextComponent for TextArea {
         }
     }
 
-    fn move_cursor_right(&mut self, c: char, is_input: bool) {
+    fn move_cursor_right(&mut self, c: char) {
         // 如果为空，则直接移动
         if self.each_line_string.is_empty() {
             self.input_buffer_index = self.input_buffer_index.saturating_add(1);
@@ -372,21 +390,23 @@ impl InputTextComponent for TextArea {
             self.end_of_cursor();
             return;
         }
-        // 不是最后一行
+        // 不是最后一行允许右移，输入允许右移
         if (self.cursor_position_y != self.each_line_string.len() - 1
             || self.cursor_position_x != self.get_len_of_line(self.each_line_string.len() - 1))
-            || is_input
+            || self.is_input
         {
             self.input_buffer_index = self.input_buffer_index.saturating_add(1);
             // 加上字符宽度
             self.update_offset(c_len(c) as isize);
+            self.is_input = false;
         }
     }
 
     fn enter_char(&mut self, new_char: char) {
+        self.is_input = true;
         let index = self.byte_index();
         self.input_buffer.insert(index, new_char);
-        self.move_cursor_right(new_char, true);
+        self.move_cursor_right(new_char);
     }
 
     fn byte_index(&self) -> usize {
@@ -445,9 +465,26 @@ impl InputTextComponent for TextArea {
     fn get_content(&self) -> String {
         self.input_buffer.clone()
     }
+
+    fn clear(&mut self) {
+        self.input_buffer.clear();
+        self.input_buffer_index = 0;
+        self.cursor_position_x = 0;
+        self.cursor_position_y = 0;
+        self.each_line_string.clear();
+        self.offset = 0;
+        self.align_right = true;
+    }
 }
 
 impl TextArea {
+    // 初始化
+    pub fn new(input_buffer: String) -> Self {
+        TextArea {
+            input_buffer,
+            ..Default::default()
+        }
+    }
     /// 对单行长文本进行手动换行操作
     fn split_overflow_line_to_a_new_line(&self) -> String {
         let mut message = String::new();

@@ -30,7 +30,7 @@ use setting::SettingUI;
 
 use crate::model::ChatMessage;
 use crate::model::Sender::{Bot, Split, User};
-use crate::store::{read_config, save_config};
+use crate::utils::store_utils::{read_config, save_config, StoreData};
 
 /// 窗口UI
 #[derive(Default)]
@@ -190,7 +190,7 @@ impl UI {
                             .move_cursor_left(self.input_area_component.get_current_char()),
                         event::KeyCode::Right => self
                             .input_area_component
-                            .move_cursor_right(self.input_area_component.get_next_char(), false),
+                            .move_cursor_right(self.input_area_component.get_next_char()),
                         event::KeyCode::Up => self.up(),
                         event::KeyCode::Down => self.down(),
                         event::KeyCode::Home => self.input_area_component.home_of_cursor(),
@@ -244,21 +244,21 @@ impl UI {
 
     /// 提交消息
     fn submit_message(&mut self, tx: mpsc::Sender<String>) {
-        if !self.input_area_component.input_buffer.is_empty() {
+        if !self.input_area_component.get_content().is_empty() {
             if self.gemini.is_none() {
-                self.restore_or_new_gemini(Some(self.input_area_component.input_buffer.clone()));
+                self.restore_or_new_gemini(Some(self.input_area_component.get_content()));
             } else {
                 self.chat_history.push(ChatMessage {
                     success: true,
                     sender: User,
-                    message: self.input_area_component.input_buffer.clone(),
+                    message: self.input_area_component.get_content(),
                     date_time: Local::now(),
                 });
                 // 将获取消息标志位置真，发送消息给下一次循环使用
                 self.receiving_message = true;
-                let _ = tx.send(self.input_area_component.input_buffer.clone());
+                let _ = tx.send(self.input_area_component.get_content());
             }
-            self.input_area_component.input_buffer.clear();
+            self.input_area_component.clear();
             self.input_area_component.home_of_cursor();
             // 滚动到最新的一条消息
             self.scroll_props.scroll_offset = self.max_scroll_offset();
@@ -272,7 +272,7 @@ impl UI {
             Ok(gemini) => {
                 match self.gemini.clone() {
                     Some(gemini_origin) => {
-                        // gemni 已经存在，则更新配置信息
+                        // gemini 已经存在，则更新配置信息
                         let mut gemini_new =
                             Gemini::rebuild(gemini.key, gemini.model, gemini_origin.contents, gemini.options);
                         gemini_new.set_system_instruction(gemini.system_instruction.unwrap_or("".into()));
@@ -280,7 +280,9 @@ impl UI {
                     }
                     None => {
                         // 读取到配置文件则直接使用配置文件中的 Gemini API
-                        self.gemini = Some(gemini)
+                        let mut gemini_new = Gemini::rebuild(gemini.key, gemini.model, Vec::new(), gemini.options);
+                        gemini_new.set_system_instruction(gemini.system_instruction.unwrap_or("".into()));
+                        self.gemini = Some(gemini_new)
                     }
                 }
             }
@@ -298,10 +300,17 @@ impl UI {
 
     /// 初始化 Gemini API
     fn init_gemini(&mut self, key: String) {
+        let system_instruction = "你是一只猫娘，你每次说话都会在句尾加上喵~ ".to_owned();
         let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
         gemini.set_options(GenerationConfig::default());
-        gemini.set_system_instruction("你是一只猫娘，你每次说话都会在句尾加上喵~ ".into());
-        let _ = save_config(gemini.clone());
+        gemini.set_system_instruction(system_instruction.clone());
+        let data = StoreData {
+            key: gemini.key.clone(),
+            model: gemini.model.clone(),
+            system_instruction: Some(system_instruction),
+            options: gemini.options.clone(),
+        };
+        let _ = save_config(data);
         self.gemini = Some(gemini)
     }
 
@@ -355,7 +364,9 @@ impl UI {
     /// 渲染输入区域
     fn render_input_area(&mut self, frame: &mut Frame, input_area: Rect) {
         // 调整输入框宽度
-        self.input_area_component.width = input_area.width as usize - 2;
+        // self.input_area_component.width = input_area.width as usize - 2;
+        self.input_area_component
+            .set_width_height(input_area.width as usize - 2, 1);
         // 输入区域（底部）
         let input_block_title = if self.gemini.is_none() {
             "Input Key"

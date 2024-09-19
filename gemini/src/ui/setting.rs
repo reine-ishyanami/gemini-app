@@ -1,4 +1,3 @@
-use gemini_api::model::blocking::Gemini;
 use ratatui::{
     crossterm::event::{self, Event, KeyEventKind, KeyModifiers},
     layout::{
@@ -10,7 +9,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::store::{read_config, save_config};
+use crate::utils::store_utils::{read_config, save_config, StoreData};
 
 use super::{
     component::{InputTextComponent, TextArea},
@@ -24,7 +23,7 @@ pub struct SettingUI {
     select_input_field: AllSettingComponents,
     /// 组件列表，先纵向再横向排列
     components: Vec<(Constraint, Vec<SettingComponent>)>,
-    conifg: Gemini,
+    data: StoreData,
     /// 是否需要更新配置标志位
     pub update: bool,
     /// 是否应该退出程序
@@ -38,8 +37,6 @@ pub struct SettingComponent {
     label: String,
     /// 布局属性
     layout: Constraint,
-    /// 指针位置，光标指向输入字符串中第几位
-    // input_area_props: InputField,
     // 输入框组件
     input_component: Box<dyn InputTextComponent>,
 }
@@ -47,11 +44,11 @@ pub struct SettingComponent {
 impl SettingUI {
     /// 启动此窗口UI
     pub fn new() -> Self {
-        let config = read_config().unwrap_or_default();
+        let data = read_config().unwrap_or_default();
         Self {
             select_input_field: AllSettingComponents::SystemInstruction,
             update: false,
-            conifg: config.clone(),
+            data: data.clone(),
             should_exit: false,
             components: vec![
                 (
@@ -61,19 +58,13 @@ impl SettingUI {
                             identifier: AllSettingComponents::Model,
                             label: "model".into(),
                             layout: Length(30),
-                            input_component: Box::new(TextField {
-                                input_buffer: config.model.to_string(),
-                                ..Default::default()
-                            }),
+                            input_component: Box::new(TextField::new(data.model.to_string())),
                         },
                         SettingComponent {
                             identifier: AllSettingComponents::Key,
                             label: "key".into(),
                             layout: Fill(20),
-                            input_component: Box::new(TextField {
-                                input_buffer: config.key,
-                                ..Default::default()
-                            }),
+                            input_component: Box::new(TextField::new(data.key)),
                         },
                     ],
                 ),
@@ -83,10 +74,7 @@ impl SettingUI {
                         identifier: AllSettingComponents::SystemInstruction,
                         label: "system instruction".into(),
                         layout: Fill(1),
-                        input_component: Box::new(TextArea {
-                            input_buffer: config.system_instruction.unwrap_or("".into()),
-                            ..Default::default()
-                        }),
+                        input_component: Box::new(TextArea::new(data.system_instruction.unwrap_or("".into()))),
                     }],
                 ),
                 (
@@ -96,19 +84,17 @@ impl SettingUI {
                             identifier: AllSettingComponents::ResponseMineType,
                             label: "response mine type".into(),
                             layout: Fill(1),
-                            input_component: Box::new(TextField {
-                                input_buffer: config.options.response_mime_type.unwrap_or("".into()),
-                                ..Default::default()
-                            }),
+                            input_component: Box::new(TextField::new(
+                                data.options.response_mime_type.unwrap_or("".into()),
+                            )),
                         },
                         SettingComponent {
                             identifier: AllSettingComponents::MaxOutputTokens,
                             label: "max output tokens".into(),
                             layout: Fill(1),
-                            input_component: Box::new(TextField {
-                                input_buffer: config.options.max_output_tokens.unwrap_or(0).to_string(),
-                                ..Default::default()
-                            }),
+                            input_component: Box::new(TextField::new(
+                                data.options.max_output_tokens.unwrap_or(0).to_string(),
+                            )),
                         },
                     ],
                 ),
@@ -119,28 +105,21 @@ impl SettingUI {
                             identifier: AllSettingComponents::Temperature,
                             label: "temperature".into(),
                             layout: Fill(1),
-                            input_component: Box::new(TextField {
-                                input_buffer: config.options.temperature.unwrap_or(0.0).to_string(),
-                                ..Default::default()
-                            }),
+                            input_component: Box::new(TextField::new(
+                                data.options.temperature.unwrap_or(0.0).to_string(),
+                            )),
                         },
                         SettingComponent {
                             identifier: AllSettingComponents::TopP,
                             label: "top p".into(),
                             layout: Min(5),
-                            input_component: Box::new(TextField {
-                                input_buffer: config.options.top_p.unwrap_or(0.0).to_string(),
-                                ..Default::default()
-                            }),
+                            input_component: Box::new(TextField::new(data.options.top_p.unwrap_or(0.0).to_string())),
                         },
                         SettingComponent {
                             identifier: AllSettingComponents::TopK,
                             label: "top k".into(),
                             layout: Min(5),
-                            input_component: Box::new(TextField {
-                                input_buffer: config.options.top_k.unwrap_or(0).to_string(),
-                                ..Default::default()
-                            }),
+                            input_component: Box::new(TextField::new(data.options.top_k.unwrap_or(0).to_string())),
                         },
                     ],
                 ),
@@ -163,7 +142,7 @@ impl SettingUI {
                     .move_cursor_left(component.input_component.get_current_char()),
                 event::KeyCode::Right => component
                     .input_component
-                    .move_cursor_right(component.input_component.get_next_char(), false),
+                    .move_cursor_right(component.input_component.get_next_char()),
                 event::KeyCode::Up => component.input_component.move_cursor_up(),
                 event::KeyCode::Down => component.input_component.move_cursor_down(),
                 event::KeyCode::Home => {
@@ -215,32 +194,32 @@ impl SettingUI {
         for (_, line) in self.components.iter() {
             for component in line.iter() {
                 match component.identifier {
-                    AllSettingComponents::Model => self.conifg.model = component.input_component.get_content().into(),
-                    AllSettingComponents::Key => self.conifg.key = component.input_component.get_content(),
+                    AllSettingComponents::Model => self.data.model = component.input_component.get_content().into(),
+                    AllSettingComponents::Key => self.data.key = component.input_component.get_content(),
                     AllSettingComponents::SystemInstruction => {
-                        self.conifg.system_instruction = Some(component.input_component.get_content())
+                        self.data.system_instruction = Some(component.input_component.get_content())
                     }
                     AllSettingComponents::ResponseMineType => {
-                        self.conifg.options.response_mime_type = Some(component.input_component.get_content())
+                        self.data.options.response_mime_type = Some(component.input_component.get_content())
                     }
                     AllSettingComponents::MaxOutputTokens => {
-                        self.conifg.options.max_output_tokens =
+                        self.data.options.max_output_tokens =
                             Some(component.input_component.get_content().parse().unwrap_or(0))
                     }
                     AllSettingComponents::Temperature => {
-                        self.conifg.options.temperature =
+                        self.data.options.temperature =
                             Some(component.input_component.get_content().parse().unwrap_or(0.0))
                     }
                     AllSettingComponents::TopP => {
-                        self.conifg.options.top_p = Some(component.input_component.get_content().parse().unwrap_or(0.0))
+                        self.data.options.top_p = Some(component.input_component.get_content().parse().unwrap_or(0.0))
                     }
                     AllSettingComponents::TopK => {
-                        self.conifg.options.top_k = Some(component.input_component.get_content().parse().unwrap_or(0))
+                        self.data.options.top_k = Some(component.input_component.get_content().parse().unwrap_or(0))
                     }
                 }
             }
         }
-        save_config(self.conifg.to_owned()).unwrap();
+        save_config(self.data.clone()).unwrap();
         self.update = true;
         self.should_exit = true;
     }
