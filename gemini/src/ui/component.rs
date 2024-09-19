@@ -1,7 +1,9 @@
 #![allow(unused)]
 
+use crate::utils::char_utils::{c_len, length};
+
 /// 输入框输入相关 Trait
-pub trait InputTextComponent {
+pub(crate) trait InputTextComponent {
     /// 应该显示在输入框中的文本
     fn should_show_text(&self) -> String;
     /// 处理回车按键事件
@@ -48,28 +50,9 @@ pub trait InputTextComponent {
     fn get_content(&self) -> String;
 }
 
-/// 通用方法
-
-/// 计算字符宽度
-fn c_len(c: char) -> usize {
-    let width_0 = ['\n', '\0'];
-    if width_0.contains(&c) {
-        0
-    } else if c.is_ascii() {
-        1
-    } else {
-        2
-    }
-}
-
-/// 获取输入框字符长度
-fn length(str: String) -> usize {
-    str.chars().map(c_len).sum()
-}
-
 /// 单行输入框相关属性
 #[derive(Default)]
-pub struct TextField {
+pub(crate) struct TextField {
     /// 当前指针位置，光标指向输入字符串中第几位
     pub input_buffer_index: usize,
     /// 光标坐标 x，每一个 ASCII 字符占1位，非 ASCII 字符占2位
@@ -232,14 +215,14 @@ impl TextField {
 
 /// 多行输入框相关属性
 #[derive(Default)]
-pub struct TextArea {
+pub(crate) struct TextArea {
     /// 当前指针位置，光标指向输入字符串中第几位
     pub input_buffer_index: usize,
-    /// 光标坐标 x，每一个 ASCII 字符占1位，非 ASCII 字符占2位
+    /// y 指向文本行的坐标，每一个 ASCII 字符占1位，非 ASCII 字符占2位
     /// 如果输入的文本为纯 ASCII 字符，则于 input_buffer_index 相等，
     /// 如果包含非 ASCII 字符，则会比 input_buffer_index 大
     pub cursor_position_x: usize,
-    /// 光标坐标 y
+    /// 第 y 行文本
     pub cursor_position_y: usize,
     /// 输入框内容
     pub input_buffer: String,
@@ -247,8 +230,8 @@ pub struct TextArea {
     pub width: usize,
     /// 输入框高度
     pub height: usize,
-    /// 每行最大宽度
-    pub each_line_max_width: Vec<usize>,
+    /// 每行的字符串
+    pub each_line_string: Vec<String>,
     /// 是否已经初始化过指针位置
     pub align_right: bool,
     /// 指针总偏移量
@@ -261,44 +244,104 @@ impl InputTextComponent for TextArea {
         text.replace("\n\n", "\n")
     }
 
+    fn handle_enter_key(&mut self) {
+        if self.get_current_char() != '\n' {
+            self.enter_char('\n');
+        }
+    }
+
     fn get_cursor_position(&self) -> (usize, usize) {
-        (
-            self.cursor_position_x.clamp(0, self.width),
-            self.cursor_position_y.clamp(0, self.height),
-        )
+        let line = self.cursor_position_y;
+        let mut y = 0;
+        // 前一行是否为空行
+        let mut prev_line_blank = false;
+        for index in 0..line {
+            let size = self.get_len_of_line(index);
+            // 如果前一行是空行，且本行也是空行，则 +1
+            if prev_line_blank && size == 0 {
+                y += 1;
+                let mut prev_line_blank = true;
+                continue;
+            }
+            // 如果当前行不是空行，则 +1
+            if size != 0 {
+                y += 1;
+                let mut prev_line_blank = false;
+                continue;
+            }
+            let mut prev_line_blank = true;
+        }
+        (self.cursor_position_x.clamp(0, self.width), y.clamp(0, self.height))
     }
 
     fn end_of_cursor(&mut self) {
-        self.end_of_multiline();
+        let y = self.cursor_position_y;
+        // 需要添加的行
+        let mut add_line = -1;
+        for index in y..self.each_line_string.len() {
+            if self.get_len_of_line(index) == 0 {
+                if add_line == -1 {
+                    self.cursor_position_y = y;
+                    self.cursor_position_x = self.get_len_of_line(y);
+                } else {
+                    self.cursor_position_y += add_line as usize;
+                }
+                break;
+            }
+            add_line += 1;
+            self.cursor_position_x = self.get_len_of_line(index);
+        }
         self.update_offset(0);
+        self.update_input_buffer_index();
     }
 
     fn end_of_multiline(&mut self) {
-        self.input_buffer_index = self.input_buffer.chars().count();
         // 指针 x 坐标
-        self.cursor_position_x = *self.each_line_max_width.last().unwrap_or(&0);
-        // 指针 y 坐标
-        self.cursor_position_y = self.each_line_max_width.len() - 1;
+        self.cursor_position_x = self.get_len_of_line(self.each_line_string.len() - 1);
+        // 指针 y 坐标，跳过空行
+        self.cursor_position_y = self.each_line_string.len() - 1;
         self.update_offset(0);
+        self.update_input_buffer_index();
     }
 
     fn home_of_cursor(&mut self) {
-        self.home_of_multiline();
+        let y = self.cursor_position_y;
+        // 需要减少的行
+        let mut sub_line = -1;
+        for index in (0..=y).rev() {
+            if self.get_len_of_line(index) == 0 {
+                if sub_line == -1 {
+                    self.cursor_position_y = y;
+                    self.cursor_position_x = 0;
+                } else {
+                    self.cursor_position_y -= sub_line as usize;
+                }
+                break;
+            }
+            sub_line += 1;
+            self.cursor_position_x = 0;
+        }
         self.update_offset(0);
+        self.update_input_buffer_index();
     }
 
     fn home_of_multiline(&mut self) {
-        self.input_buffer_index = 0;
+        // self.input_buffer_index = 0;
         self.cursor_position_y = 0;
         self.cursor_position_x = 0;
         self.update_offset(0);
+        self.update_input_buffer_index();
     }
 
     fn get_current_char(&self) -> char {
         if self.input_buffer_index == 0 {
             '\0'
         } else {
-            self.input_buffer.chars().nth(self.input_buffer_index - 1).unwrap()
+            let c = self.input_buffer.chars().count();
+            self.input_buffer
+                .chars()
+                .nth(self.input_buffer_index - 1)
+                .unwrap_or('\0')
         }
     }
 
@@ -315,8 +358,8 @@ impl InputTextComponent for TextArea {
     }
 
     fn move_cursor_right(&mut self, c: char) {
-        if self.cursor_position_y != self.each_line_max_width.len() - 1
-            || self.cursor_position_x != *self.each_line_max_width.last().unwrap_or(&0)
+        if self.cursor_position_y != self.each_line_string.len() - 1
+            || self.cursor_position_x != self.get_len_of_line(self.each_line_string.len() - 1)
         {
             self.input_buffer_index = self.input_buffer_index.saturating_add(1);
             // 加上字符宽度
@@ -369,8 +412,8 @@ impl InputTextComponent for TextArea {
         self.height = height;
         // 将长文本分行
         let new_str = self.split_overflow_line_to_a_new_line();
-        // 计算每行最大宽度，如果存在 \n\n , 则默认为 1 行空行
-        self.each_line_max_width = new_str.lines().map(|line| length(line.into())).collect();
+        // 计算每行
+        self.each_line_string = new_str.lines().map(Into::into).collect();
         // 调整指针位置，如果是第一次进入菜单绘制组件，则重新调整指针位置
         if !self.align_right {
             self.end_of_multiline();
@@ -380,19 +423,7 @@ impl InputTextComponent for TextArea {
         }
         // 拿到当前坐标总位置
         let mut cursor_pos = self.offset as usize;
-        // 调整指针位置
-        self.cursor_position_x = 0;
-        self.cursor_position_y = 0;
-        for len in self.each_line_max_width.clone() {
-            // // 如果本行宽度为 0，则表示换行
-            if cursor_pos > len {
-                cursor_pos -= len;
-                self.cursor_position_y += 1;
-            } else {
-                self.cursor_position_x = cursor_pos;
-                break;
-            }
-        }
+        self.adjust_cursor_position(cursor_pos);
     }
 
     fn get_content(&self) -> String {
@@ -407,8 +438,13 @@ impl TextArea {
         // 对长文本进行插入换行符号
         let mut line_width = 0;
         let width = self.width;
+        // 如果以换行符结尾，则在最后一个换行符之前插入换行符，使行数正确
+        let mut input_buffer = self.input_buffer.clone();
+        if input_buffer.ends_with('\n') {
+            input_buffer.push('\n');
+        }
         // 每一行最后的字符是换行符
-        for (_, c) in self.input_buffer.clone().char_indices() {
+        for (_, c) in input_buffer.char_indices() {
             if c == '\n' {
                 message.push('\n');
                 line_width = 0;
@@ -434,10 +470,106 @@ impl TextArea {
     /// 指针总指向的长度
     fn update_offset(&mut self, offset: isize) {
         self.offset = 0;
-        for i in 0..self.cursor_position_y {
-            self.offset += (*self.each_line_max_width.get(i).unwrap_or(&0)) as isize;
+        for (i, line) in self.each_line_string.clone().iter().enumerate() {
+            let ele = length(line.clone());
+            if i == self.cursor_position_y {
+                break;
+            }
+            self.offset += ele as isize;
         }
         self.offset += self.cursor_position_x as isize;
         self.offset += offset;
+    }
+
+    /// 拿到所有的非空行
+    fn get_not_blank_line_vec(&self) -> Vec<usize> {
+        self.each_line_string
+            .clone()
+            .into_iter()
+            .map(length)
+            .filter(|x| x > &0)
+            .collect()
+    }
+
+    /// 拿到指定行的长度
+    fn get_len_of_line(&self, index: usize) -> usize {
+        let str = self.each_line_string.get(index);
+        if let Some(str) = str {
+            length(str.into())
+        } else {
+            0
+        }
+    }
+
+    /// 根据 x y 坐标更新 input_buffer_index
+    fn update_input_buffer_index(&mut self) {
+        // 先拿到 y 坐标
+        let y = self.cursor_position_y; // 0
+        self.input_buffer_index = 0;
+        for (index, line) in self.each_line_string.clone().iter().enumerate() {
+            // 如果已经到当前行
+            if index == y {
+                let mut x = self.cursor_position_x;
+                // 遍历本行所有字符并计算其宽度
+                for (c, len) in line.chars().map(|c| (c, c_len(c))) {
+                    if x == 0 {
+                        break;
+                    }
+                    self.input_buffer_index += 1;
+                    x -= len;
+                }
+                break;
+            }
+            // 获得每一行的的字符数
+            let chars_count = line.chars().count();
+            // 空行表示一个换行符， +1
+            if chars_count == 0 {
+                self.input_buffer_index += 1;
+            } else {
+                // 非空行，则 + 字符数
+                self.input_buffer_index += chars_count;
+            }
+        }
+    }
+
+    /// 调整光标位置
+    fn adjust_cursor_position(&mut self, cursor_pos: usize) {
+        let mut cursor_pos = cursor_pos;
+        // 调整指针位置
+        self.cursor_position_x = 0;
+        self.cursor_position_y = 0;
+        let mut is_end_of_text = false;
+        // 如果当前指向总坐标为 0 则不用调整
+        if cursor_pos == 0 {
+            return;
+        }
+        // 遍历每一行
+        for line in self.each_line_string.clone() {
+            let len = length(line);
+            // // 如果本行宽度为 0，则表示换行，如果遍历完文本后还有换行，则继续换行
+            if len == 0 && self.get_current_char() == '\n' {
+                self.cursor_position_y += 1;
+                self.cursor_position_x = 0;
+                continue;
+            }
+            // 是否已经遍历完文本
+            if is_end_of_text {
+                break;
+            }
+            // 如果坐标还有余
+            if cursor_pos > len {
+                // 减去本行宽度
+                cursor_pos -= len;
+                // 加 1 行
+                self.cursor_position_y += 1;
+                self.cursor_position_x = 0;
+                continue;
+            }
+            // 偏移量不足以减去一行宽度时，则将该偏移量赋予 x，退出循环
+            if cursor_pos <= len {
+                self.cursor_position_x = cursor_pos;
+                is_end_of_text = true;
+            }
+        }
     }
 }

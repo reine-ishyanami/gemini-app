@@ -1,6 +1,7 @@
 mod model;
 mod store;
 mod ui;
+mod utils;
 
 use anyhow::Result;
 use ui::UI;
