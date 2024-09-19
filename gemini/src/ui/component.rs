@@ -29,7 +29,7 @@ pub(crate) trait InputTextComponent {
     /// 向左移动光标
     fn move_cursor_left(&mut self, c: char);
     /// 向右移动光标
-    fn move_cursor_right(&mut self, c: char);
+    fn move_cursor_right(&mut self, c: char, is_input: bool);
     /// 向上移动光标
     fn move_cursor_up(&mut self) {}
     /// 向下移动光标
@@ -114,7 +114,7 @@ impl InputTextComponent for TextField {
         }
     }
 
-    fn move_cursor_right(&mut self, c: char) {
+    fn move_cursor_right(&mut self, c: char, _is_input: bool) {
         let origin_cursor_index = self.input_buffer_index;
         // 指针位置指向下一位
         let cursor_moved_right = self.input_buffer_index.saturating_add(1);
@@ -128,7 +128,7 @@ impl InputTextComponent for TextField {
     fn enter_char(&mut self, new_char: char) {
         let index = self.byte_index();
         self.input_buffer.insert(index, new_char);
-        self.move_cursor_right(new_char);
+        self.move_cursor_right(new_char, true);
     }
 
     fn byte_index(&self) -> usize {
@@ -296,10 +296,15 @@ impl InputTextComponent for TextArea {
     }
 
     fn end_of_multiline(&mut self) {
-        // 指针 x 坐标
-        self.cursor_position_x = self.get_len_of_line(self.each_line_string.len() - 1);
-        // 指针 y 坐标，跳过空行
-        self.cursor_position_y = self.each_line_string.len() - 1;
+        if !self.each_line_string.is_empty() {
+            // 指针 x 坐标
+            self.cursor_position_x = self.get_len_of_line(self.each_line_string.len() - 1);
+            // 指针 y 坐标，跳过空行
+            self.cursor_position_y = self.each_line_string.len() - 1;
+        } else {
+            self.cursor_position_x = 0;
+            self.cursor_position_y = 0;
+        }
         self.update_offset(0);
         self.update_input_buffer_index();
     }
@@ -357,9 +362,20 @@ impl InputTextComponent for TextArea {
         }
     }
 
-    fn move_cursor_right(&mut self, c: char) {
-        if self.cursor_position_y != self.each_line_string.len() - 1
-            || self.cursor_position_x != self.get_len_of_line(self.each_line_string.len() - 1)
+    fn move_cursor_right(&mut self, c: char, is_input: bool) {
+        // 如果为空，则直接移动
+        if self.each_line_string.is_empty() {
+            self.input_buffer_index = self.input_buffer_index.saturating_add(1);
+            self.cursor_position_x = c_len(c);
+            // 加上字符宽度
+            self.update_offset(c_len(c) as isize);
+            self.end_of_cursor();
+            return;
+        }
+        // 不是最后一行
+        if (self.cursor_position_y != self.each_line_string.len() - 1
+            || self.cursor_position_x != self.get_len_of_line(self.each_line_string.len() - 1))
+            || is_input
         {
             self.input_buffer_index = self.input_buffer_index.saturating_add(1);
             // 加上字符宽度
@@ -370,7 +386,7 @@ impl InputTextComponent for TextArea {
     fn enter_char(&mut self, new_char: char) {
         let index = self.byte_index();
         self.input_buffer.insert(index, new_char);
-        self.move_cursor_right(new_char);
+        self.move_cursor_right(new_char, true);
     }
 
     fn byte_index(&self) -> usize {
@@ -505,6 +521,9 @@ impl TextArea {
     fn update_input_buffer_index(&mut self) {
         // 先拿到 y 坐标
         let y = self.cursor_position_y; // 0
+        if self.each_line_string.is_empty() {
+            return;
+        }
         self.input_buffer_index = 0;
         for (index, line) in self.each_line_string.clone().iter().enumerate() {
             // 如果已经到当前行

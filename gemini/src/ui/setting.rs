@@ -163,7 +163,7 @@ impl SettingUI {
                     .move_cursor_left(component.input_component.get_current_char()),
                 event::KeyCode::Right => component
                     .input_component
-                    .move_cursor_right(component.input_component.get_next_char()),
+                    .move_cursor_right(component.input_component.get_next_char(), false),
                 event::KeyCode::Up => component.input_component.move_cursor_up(),
                 event::KeyCode::Down => component.input_component.move_cursor_down(),
                 event::KeyCode::Home => {

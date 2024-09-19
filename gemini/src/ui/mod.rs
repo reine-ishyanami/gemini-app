@@ -190,7 +190,7 @@ impl UI {
                             .move_cursor_left(self.input_area_component.get_current_char()),
                         event::KeyCode::Right => self
                             .input_area_component
-                            .move_cursor_right(self.input_area_component.get_next_char()),
+                            .move_cursor_right(self.input_area_component.get_next_char(), false),
                         event::KeyCode::Up => self.up(),
                         event::KeyCode::Down => self.down(),
                         event::KeyCode::Home => self.input_area_component.home_of_cursor(),
