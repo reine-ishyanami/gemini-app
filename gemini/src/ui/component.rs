@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use crate::utils::char_utils::{c_len, length};
 
 /// 输入框输入相关 Trait
@@ -27,8 +25,10 @@ pub(crate) trait InputTextComponent {
     /// 获取当前光标的下一个字符
     fn get_next_char(&self) -> char;
     /// 向左移动光标
+    /// 返回是否光标位置有变化
     fn move_cursor_left(&mut self, c: char);
     /// 向右移动光标
+    /// 返回是否光标位置有变化
     fn move_cursor_right(&mut self, c: char);
     /// 向上移动光标
     fn move_cursor_up(&mut self) {}
@@ -57,6 +57,10 @@ pub(crate) trait InputTextComponent {
 pub(crate) struct TextField {
     /// 当前指针位置，光标指向输入字符串中第几位
     input_buffer_index: usize,
+    /// 最左侧光标索引
+    left_index: usize,
+    /// 最右侧光标索引
+    right_index: usize,
     /// 光标坐标 x，每一个 ASCII 字符占1位，非 ASCII 字符占2位
     /// 如果输入的文本为纯 ASCII 字符，则于 input_buffer_index 相等，
     /// 如果包含非 ASCII 字符，则会比 input_buffer_index 大
@@ -71,27 +75,35 @@ pub(crate) struct TextField {
 
 impl InputTextComponent for TextField {
     fn should_show_text(&self) -> String {
-        // 根据指针位置截取内容展示，输入框内容长度大于组件宽度，并且指针位置截取的宽度大于组件宽度
-        if length(self.input_buffer.clone()) > self.width && self.cursor_position_x > self.width {
-            self.sub_input_buffer(self.cursor_position_x - self.width, self.cursor_position_x)
-        } else {
-            self.input_buffer.clone()
-        }
+        self.sub_input_buffer()
     }
 
     fn get_cursor_position(&self) -> (usize, usize) {
-        (self.cursor_position_x.clamp(0, self.width), 0)
+        // 计算左侧隐藏的宽度
+        let left = self.left_index;
+        let mut width = 0;
+        for index in 0..left {
+            if let Some(c) = self.input_buffer.chars().nth(index) {
+                width += c_len(c);
+            }
+        }
+        // 坐标减去左侧隐藏的宽度为真实指针坐标
+        let x = self.cursor_position_x - width;
+        (x.clamp(0, self.width), 0)
     }
 
     fn end_of_cursor(&mut self) {
         self.input_buffer_index = self.input_buffer.chars().count();
-        // 指针 x 坐标
         self.cursor_position_x = length(self.input_buffer.clone());
+        self.right_index = self.input_buffer_index;
+        self.compact_left_index_by_right_index();
     }
 
     fn home_of_cursor(&mut self) {
         self.input_buffer_index = 0;
         self.cursor_position_x = 0;
+        self.left_index = 0;
+        self.compact_right_index_by_left_index();
     }
 
     fn get_current_char(&self) -> char {
@@ -110,9 +122,14 @@ impl InputTextComponent for TextField {
         let origin_cursor_index = self.input_buffer_index;
         let cursor_moved_left = self.input_buffer_index.saturating_sub(1);
         self.input_buffer_index = self.clamp_cursor(cursor_moved_left);
+        // 如果当前字符不在左右范围内，则左指针左移
+        if self.input_buffer_index < self.left_index {
+            self.left_index = self.input_buffer_index;
+            self.compact_right_index_by_left_index();
+        }
         // 光标有变化
         if origin_cursor_index != self.input_buffer_index {
-            self.cursor_position_x = self.cursor_position_x.saturating_sub(c_len(c))
+            self.cursor_position_x = self.cursor_position_x.saturating_sub(c_len(c));
         }
     }
 
@@ -121,9 +138,14 @@ impl InputTextComponent for TextField {
         // 指针位置指向下一位
         let cursor_moved_right = self.input_buffer_index.saturating_add(1);
         self.input_buffer_index = self.clamp_cursor(cursor_moved_right);
+        // 如果当前字符不在左右范围内，则右指针右移
+        if self.input_buffer_index > self.right_index {
+            self.right_index = self.input_buffer_index;
+            self.compact_left_index_by_right_index();
+        }
         // 光标有变化
         if origin_cursor_index != self.input_buffer_index {
-            self.cursor_position_x = self.cursor_position_x.saturating_add(c_len(c))
+            self.cursor_position_x = self.cursor_position_x.saturating_add(c_len(c));
         }
     }
 
@@ -181,6 +203,8 @@ impl InputTextComponent for TextField {
     fn clear(&mut self) {
         self.input_buffer.clear();
         self.input_buffer_index = 0;
+        self.left_index = 0;
+        self.right_index = 0;
         self.cursor_position_x = 0;
         self.home_of_cursor();
     }
@@ -196,27 +220,17 @@ impl TextField {
     }
 
     /// 截取 input_buffer 字符串以供 UI 展示
-    fn sub_input_buffer(&self, start: usize, count: usize) -> String {
+    fn sub_input_buffer(&self) -> String {
+        let start = self.left_index;
+        let end = self.right_index;
         let mut result = String::new();
-        let mut char_count = 0;
 
-        // 记录当前遍历过的字符总宽度
-        let mut j = 0;
-        for (_, c) in self.input_buffer.char_indices() {
+        for (c, index) in self.input_buffer.chars().zip(0..self.input_buffer.len()) {
             // 当我们达到起始字符索引时开始截取
-            if j >= start && char_count < count {
+            if index >= start && index < end {
                 result.push(c);
-                char_count += c_len(c);
             }
-            // 每遍历完递增宽度
-            j += c_len(c);
-            // 当我们截取了足够的字符后停止
-            if char_count == count {
-                break;
-            }
-            // 当我们超过了字符总长度时停止
-            if char_count > count {
-                result.push(' ');
+            if index == end {
                 break;
             }
         }
@@ -226,6 +240,54 @@ impl TextField {
     /// 限制光标位置，将光标位置限制在0到字符总长度之间
     fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
         new_cursor_pos.clamp(0, self.input_buffer.chars().count())
+    }
+
+    /// 根据右指针位置调整左指针位置
+    fn compact_left_index_by_right_index(&mut self) {
+        let right = self.right_index;
+        if right == 0 {
+            return;
+        }
+        let input = self.input_buffer.clone();
+        self.left_index = right;
+        let mut width = 0;
+        for index in (0..right).rev() {
+            if let Some(c) = input.chars().nth(index) {
+                width += c_len(c);
+                self.left_index -= 1;
+                if width > self.width {
+                    self.left_index += 1;
+                    break;
+                }
+                if width == self.width || self.left_index == 0 {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// 根据左指针位置调整右指针位置
+    fn compact_right_index_by_left_index(&mut self) {
+        let left = self.left_index;
+        if self.input_buffer.chars().count() == 0 {
+            return;
+        }
+        let input = self.input_buffer.clone();
+        self.right_index = left;
+        let mut width = 0;
+        for index in (left..self.input_buffer.chars().count() - 1).rev() {
+            if let Some(c) = input.chars().nth(index) {
+                width += c_len(c);
+                self.right_index += 1;
+                if width == self.width {
+                    break;
+                }
+                if width > self.width {
+                    self.left_index -= 1;
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -271,23 +333,12 @@ impl InputTextComponent for TextArea {
     fn get_cursor_position(&self) -> (usize, usize) {
         let line = self.cursor_position_y;
         let mut y = 0;
-        // 前一行是否为空行
-        let mut prev_line_blank = false;
         for index in 0..line {
             let size = self.get_len_of_line(index);
-            // 如果前一行是空行，且本行也是空行，则 +1
-            if prev_line_blank && size == 0 {
-                y += 1;
-                let mut prev_line_blank = true;
-                continue;
-            }
-            // 如果当前行不是空行，则 +1
+            // 如果本行不为 0 , 才记为有效行
             if size != 0 {
                 y += 1;
-                let mut prev_line_blank = false;
-                continue;
             }
-            let mut prev_line_blank = true;
         }
         (self.cursor_position_x.clamp(0, self.width), y.clamp(0, self.height))
     }
@@ -360,7 +411,6 @@ impl InputTextComponent for TextArea {
         if self.input_buffer_index == 0 {
             '\0'
         } else {
-            let c = self.input_buffer.chars().count();
             self.input_buffer
                 .chars()
                 .nth(self.input_buffer_index - 1)
@@ -458,8 +508,8 @@ impl InputTextComponent for TextArea {
             return;
         }
         // 拿到当前坐标总位置
-        let mut cursor_pos = self.offset as usize;
-        self.adjust_cursor_position(cursor_pos);
+        let cursor_pos = self.offset as usize;
+        self.adjust_x_y(cursor_pos);
     }
 
     fn get_content(&self) -> String {
@@ -534,16 +584,6 @@ impl TextArea {
         self.offset += offset;
     }
 
-    /// 拿到所有的非空行
-    fn get_not_blank_line_vec(&self) -> Vec<usize> {
-        self.each_line_string
-            .clone()
-            .into_iter()
-            .map(length)
-            .filter(|x| x > &0)
-            .collect()
-    }
-
     /// 拿到指定行的长度
     fn get_len_of_line(&self, index: usize) -> usize {
         let str = self.each_line_string.get(index);
@@ -567,7 +607,7 @@ impl TextArea {
             if index == y {
                 let mut x = self.cursor_position_x;
                 // 遍历本行所有字符并计算其宽度
-                for (c, len) in line.chars().map(|c| (c, c_len(c))) {
+                for (_, len) in line.chars().map(|c| (c, c_len(c))) {
                     if x == 0 {
                         break;
                     }
@@ -588,8 +628,8 @@ impl TextArea {
         }
     }
 
-    /// 调整光标位置
-    fn adjust_cursor_position(&mut self, cursor_pos: usize) {
+    /// 调整 x y 位置
+    fn adjust_x_y(&mut self, cursor_pos: usize) {
         let mut cursor_pos = cursor_pos;
         // 调整指针位置
         self.cursor_position_x = 0;
