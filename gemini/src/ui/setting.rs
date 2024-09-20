@@ -12,7 +12,7 @@ use ratatui::{
 use crate::utils::store_utils::{read_config, save_config, StoreData};
 
 use super::{
-    component::{InputTextComponent, TextArea},
+    component::input::{input_trait::InputTextComponent, text_area::TextArea},
     enum_from::AllSettingComponents,
     TextField,
 };

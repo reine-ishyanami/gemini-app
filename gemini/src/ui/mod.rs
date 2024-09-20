@@ -7,7 +7,7 @@ use std::sync::mpsc;
 
 use anyhow::Result;
 use chrono::Local;
-use component::{InputTextComponent, TextField};
+use component::input::{input_trait::InputTextComponent, text_field::TextField};
 use gemini_api::body::request::GenerationConfig;
 use gemini_api::model::blocking::Gemini;
 use gemini_api::param::LanguageModel;
