@@ -13,7 +13,7 @@ pub(crate) fn c_len(c: char) -> usize {
 }
 
 /// 判断是否为中文字符
-pub(crate) fn is_chinese_char(c: char) -> bool {
+fn is_chinese_char(c: char) -> bool {
     // 基本汉字
     if (c as u32 >= 0x4E00) && (c as u32 <= 0x9FFF) {
         return true;
@@ -46,12 +46,11 @@ pub(crate) fn is_chinese_char(c: char) -> bool {
     if (c as u32 >= 0x2F800) && (c as u32 <= 0x2FA1F) {
         return true;
     }
-
     false
 }
 
 /// 判断是否为中文标点
-pub(crate) fn is_chinese_punctuation(c: char) -> bool {
+fn is_chinese_punctuation(c: char) -> bool {
     // CJK 符号和标点
     if (c as u32 >= 0x3000) && (c as u32 <= 0x303F) {
         return true;

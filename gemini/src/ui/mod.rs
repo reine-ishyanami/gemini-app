@@ -30,6 +30,7 @@ use setting::SettingUI;
 
 use crate::model::ChatMessage;
 use crate::model::Sender::{Bot, Split, User};
+use crate::utils::char_utils::c_len;
 use crate::utils::store_utils::{read_config, save_config, StoreData};
 
 /// 窗口UI
@@ -519,8 +520,7 @@ impl UI {
         F: Fn() -> usize,
     {
         let chat_block = Block::default()
-            // .title("Chat")
-            .border_style(Style::default().fg(Color::Blue))
+            .border_style(Style::default().fg(Color::DarkGray))
             .borders(Borders::ALL);
         let items: Vec<ChatMessage> = self
             .chat_history
@@ -541,10 +541,10 @@ impl UI {
                         let c = message.pop().unwrap();
                         message.push('\n');
                         message.push(c);
-                        line_width = if c.is_ascii() { 1 } else { 2 };
+                        line_width = c_len(c);
                     }
                     message.push(c);
-                    line_width += if c.is_ascii() { 1 } else { 2 };
+                    line_width += c_len(c);
                     if c == '\n' {
                         line_width = 0;
                     }

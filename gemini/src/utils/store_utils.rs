@@ -22,7 +22,7 @@ pub(crate) struct StoreData {
 const CONFIG_FILE_NAME: &str = "gemini.json";
 
 /// 保存配置
-pub fn save_config(gemini: StoreData) -> Result<()> {
+pub(crate) fn save_config(gemini: StoreData) -> Result<()> {
     let json_data = serde_json::to_string(&gemini).unwrap();
     let config_file = get_config_file()?;
     let mut file = File::create(config_file)?;
@@ -31,7 +31,7 @@ pub fn save_config(gemini: StoreData) -> Result<()> {
 }
 
 /// 读取配置
-pub fn read_config() -> Result<StoreData> {
+pub(crate) fn read_config() -> Result<StoreData> {
     let config_file = get_config_file()?;
     if config_file.exists() {
         let mut file = File::open(config_file)?;

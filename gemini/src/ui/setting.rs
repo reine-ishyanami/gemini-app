@@ -13,16 +13,17 @@ use crate::utils::store_utils::{read_config, save_config, StoreData};
 
 use super::{
     component::input::{input_trait::InputTextComponent, text_area::TextArea},
-    enum_from::AllSettingComponents,
+    enum_from::InputIdentifier,
     TextField,
 };
 
 /// 窗口UI
 pub struct SettingUI {
     /// 选中的输入框
-    select_input_field: AllSettingComponents,
+    select_input_field: InputIdentifier,
     /// 组件列表，先纵向再横向排列
     components: Vec<(Constraint, Vec<SettingComponent>)>,
+    /// 修改后的配置数据
     data: StoreData,
     /// 是否需要更新配置标志位
     pub update: bool,
@@ -32,7 +33,7 @@ pub struct SettingUI {
 
 pub struct SettingComponent {
     /// 标识符
-    identifier: AllSettingComponents,
+    identifier: InputIdentifier,
     /// 提示文本
     label: String,
     /// 布局属性
@@ -46,7 +47,7 @@ impl SettingUI {
     pub fn new() -> Self {
         let data = read_config().unwrap_or_default();
         Self {
-            select_input_field: AllSettingComponents::SystemInstruction,
+            select_input_field: InputIdentifier::SystemInstruction,
             update: false,
             data: data.clone(),
             should_exit: false,
@@ -55,13 +56,13 @@ impl SettingUI {
                     Length(3),
                     vec![
                         SettingComponent {
-                            identifier: AllSettingComponents::Model,
+                            identifier: InputIdentifier::Model,
                             label: "model".into(),
                             layout: Length(30),
                             input_component: Box::new(TextField::new(data.model.to_string())),
                         },
                         SettingComponent {
-                            identifier: AllSettingComponents::Key,
+                            identifier: InputIdentifier::Key,
                             label: "key".into(),
                             layout: Fill(20),
                             input_component: Box::new(TextField::new(data.key)),
@@ -71,7 +72,7 @@ impl SettingUI {
                 (
                     Min(10),
                     vec![SettingComponent {
-                        identifier: AllSettingComponents::SystemInstruction,
+                        identifier: InputIdentifier::SystemInstruction,
                         label: "system instruction".into(),
                         layout: Fill(1),
                         input_component: Box::new(TextArea::new(data.system_instruction.unwrap_or("".into()))),
@@ -81,7 +82,7 @@ impl SettingUI {
                     Length(3),
                     vec![
                         SettingComponent {
-                            identifier: AllSettingComponents::ResponseMineType,
+                            identifier: InputIdentifier::ResponseMineType,
                             label: "response mine type".into(),
                             layout: Fill(1),
                             input_component: Box::new(TextField::new(
@@ -89,7 +90,7 @@ impl SettingUI {
                             )),
                         },
                         SettingComponent {
-                            identifier: AllSettingComponents::MaxOutputTokens,
+                            identifier: InputIdentifier::MaxOutputTokens,
                             label: "max output tokens".into(),
                             layout: Fill(1),
                             input_component: Box::new(TextField::new(
@@ -102,7 +103,7 @@ impl SettingUI {
                     Length(3),
                     vec![
                         SettingComponent {
-                            identifier: AllSettingComponents::Temperature,
+                            identifier: InputIdentifier::Temperature,
                             label: "temperature".into(),
                             layout: Fill(1),
                             input_component: Box::new(TextField::new(
@@ -110,13 +111,13 @@ impl SettingUI {
                             )),
                         },
                         SettingComponent {
-                            identifier: AllSettingComponents::TopP,
+                            identifier: InputIdentifier::TopP,
                             label: "top p".into(),
                             layout: Min(5),
                             input_component: Box::new(TextField::new(data.options.top_p.unwrap_or(0.0).to_string())),
                         },
                         SettingComponent {
-                            identifier: AllSettingComponents::TopK,
+                            identifier: InputIdentifier::TopK,
                             label: "top k".into(),
                             layout: Min(5),
                             input_component: Box::new(TextField::new(data.options.top_k.unwrap_or(0).to_string())),
@@ -181,39 +182,39 @@ impl SettingUI {
         None
     }
 
-    /// 切换到下一个输入框
+    /// 切换到下一个输入组件
     fn next_input_field(&mut self) {
         let current = self.select_input_field.clone() as i32;
         let next = (current + 1) % 8;
         self.select_input_field = next.try_into().unwrap();
     }
 
-    /// 保存配置并退出窗口UI
+    /// 保存当前配置并退出配置窗口
     fn save_config(&mut self) {
         // 遍历所有组件，将其现在显示的值更新到配置中
         for (_, line) in self.components.iter() {
             for component in line.iter() {
                 match component.identifier {
-                    AllSettingComponents::Model => self.data.model = component.input_component.get_content().into(),
-                    AllSettingComponents::Key => self.data.key = component.input_component.get_content(),
-                    AllSettingComponents::SystemInstruction => {
+                    InputIdentifier::Model => self.data.model = component.input_component.get_content().into(),
+                    InputIdentifier::Key => self.data.key = component.input_component.get_content(),
+                    InputIdentifier::SystemInstruction => {
                         self.data.system_instruction = Some(component.input_component.get_content())
                     }
-                    AllSettingComponents::ResponseMineType => {
+                    InputIdentifier::ResponseMineType => {
                         self.data.options.response_mime_type = Some(component.input_component.get_content())
                     }
-                    AllSettingComponents::MaxOutputTokens => {
+                    InputIdentifier::MaxOutputTokens => {
                         self.data.options.max_output_tokens =
                             Some(component.input_component.get_content().parse().unwrap_or(0))
                     }
-                    AllSettingComponents::Temperature => {
+                    InputIdentifier::Temperature => {
                         self.data.options.temperature =
                             Some(component.input_component.get_content().parse().unwrap_or(0.0))
                     }
-                    AllSettingComponents::TopP => {
+                    InputIdentifier::TopP => {
                         self.data.options.top_p = Some(component.input_component.get_content().parse().unwrap_or(0.0))
                     }
-                    AllSettingComponents::TopK => {
+                    InputIdentifier::TopK => {
                         self.data.options.top_k = Some(component.input_component.get_content().parse().unwrap_or(0))
                     }
                 }
@@ -224,7 +225,7 @@ impl SettingUI {
         self.should_exit = true;
     }
 
-    /// 绘制窗口UI
+    /// 绘制配置窗口UI
     pub fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
         let [header_area, content_area] = Layout::vertical([Length(1), Fill(1)]).areas(area);
@@ -232,7 +233,7 @@ impl SettingUI {
         self.render_content_area(frame, content_area);
     }
 
-    /// 绘制头部区域
+    /// 绘制配置窗口头部区域
     fn render_header_area(&mut self, frame: &mut Frame, header_area: Rect) {
         let [left, center, right] = Layout::horizontal([Length(9), Fill(1), Length(9)]).areas(header_area);
 
@@ -247,7 +248,7 @@ impl SettingUI {
         frame.render_widget(center_paragraph, center);
     }
 
-    /// 绘制内容区域
+    /// 绘制配置窗口内容区域
     fn render_content_area(&mut self, frame: &mut Frame, content_area: Rect) {
         let v_list: Vec<Constraint> = self.components.iter().map(|x| x.0).collect();
         let areas = Layout::vertical(v_list).split(content_area);

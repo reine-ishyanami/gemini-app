@@ -1,5 +1,6 @@
+/// 组件标识符枚举
 #[derive(Clone, PartialEq, Eq)]
-pub enum AllSettingComponents {
+pub enum InputIdentifier {
     Model,
     Key,
     SystemInstruction,
@@ -10,19 +11,19 @@ pub enum AllSettingComponents {
     TopK,
 }
 
-impl TryFrom<i32> for AllSettingComponents {
+impl TryFrom<i32> for InputIdentifier {
     type Error = ();
 
     fn try_from(v: i32) -> Result<Self, Self::Error> {
         match v {
-            x if x == AllSettingComponents::Model as i32 => Ok(AllSettingComponents::Model),
-            x if x == AllSettingComponents::Key as i32 => Ok(AllSettingComponents::Key),
-            x if x == AllSettingComponents::SystemInstruction as i32 => Ok(AllSettingComponents::SystemInstruction),
-            x if x == AllSettingComponents::ResponseMineType as i32 => Ok(AllSettingComponents::ResponseMineType),
-            x if x == AllSettingComponents::MaxOutputTokens as i32 => Ok(AllSettingComponents::MaxOutputTokens),
-            x if x == AllSettingComponents::Temperature as i32 => Ok(AllSettingComponents::Temperature),
-            x if x == AllSettingComponents::TopP as i32 => Ok(AllSettingComponents::TopP),
-            x if x == AllSettingComponents::TopK as i32 => Ok(AllSettingComponents::TopK),
+            x if x == InputIdentifier::Model as i32 => Ok(InputIdentifier::Model),
+            x if x == InputIdentifier::Key as i32 => Ok(InputIdentifier::Key),
+            x if x == InputIdentifier::SystemInstruction as i32 => Ok(InputIdentifier::SystemInstruction),
+            x if x == InputIdentifier::ResponseMineType as i32 => Ok(InputIdentifier::ResponseMineType),
+            x if x == InputIdentifier::MaxOutputTokens as i32 => Ok(InputIdentifier::MaxOutputTokens),
+            x if x == InputIdentifier::Temperature as i32 => Ok(InputIdentifier::Temperature),
+            x if x == InputIdentifier::TopP as i32 => Ok(InputIdentifier::TopP),
+            x if x == InputIdentifier::TopK as i32 => Ok(InputIdentifier::TopK),
             _ => Err(()),
         }
     }

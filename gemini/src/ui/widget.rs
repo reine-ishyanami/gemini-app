@@ -27,7 +27,7 @@ impl Widget for ChatMessage {
                 time_paragraph.render(time_area, buf);
                 let [content_area, avatar_area] = Layout::horizontal([Fill(1), Length(3)]).areas(top);
                 // 渲染头像
-                let avatar_paragraph = Paragraph::new("\n👤").style(Color::Blue).left_aligned();
+                let avatar_paragraph = Paragraph::new("\n👤").left_aligned();
                 avatar_paragraph.render(avatar_area, buf);
                 let title = if image_path.is_empty() {
                     "Simple".into()
@@ -42,7 +42,7 @@ impl Widget for ChatMessage {
                 };
                 let message_paragraph = Paragraph::new(self.message)
                     .wrap(Wrap { trim: false })
-                    .style(Color::Blue)
+                    .style(Color::Cyan)
                     .block(message_block)
                     .left_aligned();
                 message_paragraph.render(content_area, buf);
@@ -57,7 +57,7 @@ impl Widget for ChatMessage {
                 time_paragraph.render(time_area, buf);
                 let [avatar_area, content_area] = Layout::horizontal([Length(3), Fill(1)]).areas(top);
                 // 渲染头像
-                let avatar_paragraph = Paragraph::new("\n🤖").style(Color::Blue).right_aligned();
+                let avatar_paragraph = Paragraph::new("\n🤖").right_aligned();
                 avatar_paragraph.render(avatar_area, buf);
                 // 渲染消息内容
                 let message_block = Block::default().green().borders(Borders::ALL);
