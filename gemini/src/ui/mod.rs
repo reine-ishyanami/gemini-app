@@ -48,10 +48,12 @@ pub struct UI {
     /// 当前聚焦的组件
     focus_component: MainFocusComponent,
     /// 输入区域组件
-    input_area_component: TextField,
+    input_field_component: TextField,
     scroll_props: ScrollProps,
     /// 当前窗口
     current_windows: CurrentWindows,
+    /// 图片路径
+    image_path: Option<String>,
 }
 /// 窗口枚举
 #[derive(Default)]
@@ -77,6 +79,12 @@ pub enum ResponseStatus {
     None,
     /// 接收响应消息失败，提供错误信息
     Failed(String),
+}
+
+#[derive(PartialEq, Eq)]
+enum ChatType {
+    Simple { message: String },
+    Image { message: String, image_path: String },
 }
 
 /// 滚动条相关属性
@@ -121,7 +129,7 @@ impl UI {
     }
 
     /// 处理按键事件
-    fn handle_key(&mut self, tx: mpsc::Sender<String>, rx: &mpsc::Receiver<String>) {
+    fn handle_key(&mut self, tx: mpsc::Sender<ChatType>, rx: &mpsc::Receiver<ChatType>) {
         if self.scroll_props.add_a_blank_line {
             self.scroll_props.add_a_blank_line = false;
             self.chat_history.push(ChatMessage {
@@ -135,34 +143,75 @@ impl UI {
         if self.receiving_message {
             // 阻塞接收消息
             if let Ok(request) = rx.recv() {
-                match self.gemini.as_mut().unwrap().chat_conversation(request) {
-                    // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
-                    Ok(response) => {
-                        let response = response.replace("\n\n", "\n");
-                        let response = if response.ends_with("\n") {
-                            response[..response.len() - 1].to_owned()
-                        } else {
-                            response
-                        };
-                        self.chat_history.push(ChatMessage {
-                            success: true,
-                            sender: Bot,
-                            message: response,
-                            date_time: Local::now(),
-                        });
-                        self.scroll_props.add_a_blank_line = true;
-                    }
-                    // 接收响应消息失败，将响应状态位改为失败，并提供错误信息
-                    Err(e) => {
-                        if let Some(msg) = e.downcast_ref::<String>() {
-                            self.response_status = ResponseStatus::Failed(msg.clone());
-                        } else {
-                            self.response_status = ResponseStatus::Failed("Unknown Error".into());
+                match request {
+                    ChatType::Simple { message } => {
+                        match self.gemini.as_mut().unwrap().chat_conversation(message) {
+                            // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
+                            Ok(response) => {
+                                let response = response.replace("\n\n", "\n");
+                                let response = if response.ends_with("\n") {
+                                    response[..response.len() - 1].to_owned()
+                                } else {
+                                    response
+                                };
+                                self.chat_history.push(ChatMessage {
+                                    success: true,
+                                    sender: Bot,
+                                    message: response,
+                                    date_time: Local::now(),
+                                });
+                                self.scroll_props.add_a_blank_line = true;
+                            }
+                            // 接收响应消息失败，将响应状态位改为失败，并提供错误信息
+                            Err(e) => {
+                                if let Some(msg) = e.downcast_ref::<String>() {
+                                    self.response_status = ResponseStatus::Failed(msg.clone());
+                                } else {
+                                    self.response_status = ResponseStatus::Failed("Unknown Error".into());
+                                }
+                                // 将最后一条消息状态修改为失败
+                                let mut chat_message = self.chat_history.pop().unwrap();
+                                chat_message.success = false;
+                                self.chat_history.push(chat_message);
+                            }
                         }
-                        // 将最后一条消息状态修改为失败
-                        let mut chat_message = self.chat_history.pop().unwrap();
-                        chat_message.success = false;
-                        self.chat_history.push(chat_message);
+                    }
+                    ChatType::Image { message, image_path } => {
+                        match self
+                            .gemini
+                            .as_mut()
+                            .unwrap()
+                            .image_analysis_conversation(image_path, message)
+                        {
+                            // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
+                            Ok(response) => {
+                                let response = response.replace("\n\n", "\n");
+                                let response = if response.ends_with("\n") {
+                                    response[..response.len() - 1].to_owned()
+                                } else {
+                                    response
+                                };
+                                self.chat_history.push(ChatMessage {
+                                    success: true,
+                                    sender: Bot,
+                                    message: response,
+                                    date_time: Local::now(),
+                                });
+                                self.scroll_props.add_a_blank_line = true;
+                            }
+                            // 接收响应消息失败，将响应状态位改为失败，并提供错误信息
+                            Err(e) => {
+                                if let Some(msg) = e.downcast_ref::<String>() {
+                                    self.response_status = ResponseStatus::Failed(msg.clone());
+                                } else {
+                                    self.response_status = ResponseStatus::Failed("Unknown Error".into());
+                                }
+                                // 将最后一条消息状态修改为失败
+                                let mut chat_message = self.chat_history.pop().unwrap();
+                                chat_message.success = false;
+                                self.chat_history.push(chat_message);
+                            }
+                        }
                     }
                 }
                 self.receiving_message = false;
@@ -183,22 +232,23 @@ impl UI {
                         self.response_status = ResponseStatus::None;
                     }
                     match key.code {
-                        event::KeyCode::Backspace => self.input_area_component.delete_pre_char(),
+                        event::KeyCode::Backspace => self.input_field_component.delete_pre_char(),
                         event::KeyCode::Enter => self.submit_message(tx),
                         event::KeyCode::Left => self
-                            .input_area_component
-                            .move_cursor_left(self.input_area_component.get_current_char()),
+                            .input_field_component
+                            .move_cursor_left(self.input_field_component.get_current_char()),
                         event::KeyCode::Right => self
-                            .input_area_component
-                            .move_cursor_right(self.input_area_component.get_next_char()),
+                            .input_field_component
+                            .move_cursor_right(self.input_field_component.get_next_char()),
                         event::KeyCode::Up => self.up(),
                         event::KeyCode::Down => self.down(),
-                        event::KeyCode::Home => self.input_area_component.home_of_cursor(),
-                        event::KeyCode::End => self.input_area_component.end_of_cursor(),
-                        event::KeyCode::Delete => self.input_area_component.delete_suf_char(),
-                        event::KeyCode::Char(x) => self.input_area_component.enter_char(x),
+                        event::KeyCode::Home => self.input_field_component.home_of_cursor(),
+                        event::KeyCode::End => self.input_field_component.end_of_cursor(),
+                        event::KeyCode::Delete => self.input_field_component.delete_suf_char(),
+                        event::KeyCode::Char(x) => self.input_field_component.enter_char(x),
                         event::KeyCode::Tab => self.focus_component = MainFocusComponent::ExitButton,
                         event::KeyCode::Esc => self.should_exit = true,
+                        event::KeyCode::F(4) => self.set_or_clear_image_path(),
                         _ => {}
                     };
                 }
@@ -243,23 +293,33 @@ impl UI {
     }
 
     /// 提交消息
-    fn submit_message(&mut self, tx: mpsc::Sender<String>) {
-        if !self.input_area_component.get_content().is_empty() {
+    fn submit_message(&mut self, tx: mpsc::Sender<ChatType>) {
+        let image_path = self.image_path.clone().unwrap_or_default();
+        if !self.input_field_component.get_content().is_empty() {
             if self.gemini.is_none() {
-                self.restore_or_new_gemini(Some(self.input_area_component.get_content()));
+                self.restore_or_new_gemini(Some(self.input_field_component.get_content()));
             } else {
                 self.chat_history.push(ChatMessage {
                     success: true,
-                    sender: User,
-                    message: self.input_area_component.get_content(),
+                    sender: User(image_path.clone()),
+                    message: self.input_field_component.get_content(),
                     date_time: Local::now(),
                 });
                 // 将获取消息标志位置真，发送消息给下一次循环使用
                 self.receiving_message = true;
-                let _ = tx.send(self.input_area_component.get_content());
+                if image_path.is_empty() {
+                    let _ = tx.send(ChatType::Simple {
+                        message: self.input_field_component.get_content(),
+                    });
+                } else {
+                    let _ = tx.send(ChatType::Image {
+                        message: self.input_field_component.get_content(),
+                        image_path,
+                    });
+                    self.image_path = None;
+                }
             }
-            self.input_area_component.clear();
-            self.input_area_component.home_of_cursor();
+            self.input_field_component.clear();
             // 滚动到最新的一条消息
             self.scroll_props.scroll_offset = self.max_scroll_offset();
         }
@@ -293,6 +353,22 @@ impl UI {
                 } else if let Ok(key) = std::env::var("GEMINI_KEY") {
                     // 尝试从环境变量中读取密钥
                     self.init_gemini(key);
+                }
+            }
+        }
+    }
+
+    /// 设置图片或清除图片路径
+    fn set_or_clear_image_path(&mut self) {
+        match self.image_path.clone() {
+            Some(_) => self.image_path = None,
+            None => {
+                self.image_path = if self.input_field_component.get_content().is_empty() {
+                    None
+                } else {
+                    let res = Some(self.input_field_component.get_content());
+                    self.input_field_component.clear();
+                    res
                 }
             }
         }
@@ -364,14 +440,26 @@ impl UI {
     /// 渲染输入区域
     fn render_input_area(&mut self, frame: &mut Frame, input_area: Rect) {
         // 调整输入框宽度
-        // self.input_area_component.width = input_area.width as usize - 2;
-        self.input_area_component
+        self.input_field_component
             .set_width_height(input_area.width as usize - 2, 1);
         // 输入区域（底部）
         let input_block_title = if self.gemini.is_none() {
             "Input Key"
         } else {
             "Input Text"
+        };
+        // 根据图片是否为空设置文本
+        let title = if self.blank_image() {
+            Title::from("Press F4 Set Image Path")
+                .position(TitlePosition::Top)
+                .alignment(Alignment::Right)
+        } else {
+            Title::from(format!(
+                "[{}] Press F4 To Clear",
+                self.image_path.clone().unwrap_or_default()
+            ))
+            .position(TitlePosition::Top)
+            .alignment(Alignment::Right)
         };
         // 根据是否选中组件变色
         let input_block = if self.focus_component == MainFocusComponent::InputArea {
@@ -381,20 +469,22 @@ impl UI {
                         .position(TitlePosition::Top)
                         .alignment(Alignment::Left),
                 )
+                .title(title)
                 .border_style(Style::default().fg(Color::Green))
                 .borders(Borders::ALL)
         } else {
-            Block::default()
+            Block::bordered()
                 .title(
                     Title::from(input_block_title)
                         .position(TitlePosition::Top)
                         .alignment(Alignment::Left),
                 )
+                .title(title)
                 .border_style(Style::default().fg(Color::White))
                 .borders(Borders::ALL)
         };
         // 输入框内容
-        let text = self.input_area_component.should_show_text();
+        let text = self.input_field_component.should_show_text();
 
         let input_paragraph = if self.receiving_message {
             // 如果处于等待消息接收状态，则显示等待提示
@@ -415,7 +505,7 @@ impl UI {
 
         frame.render_widget(input_paragraph, input_area);
         if self.focus_component == MainFocusComponent::InputArea {
-            let (x, y) = self.input_area_component.get_cursor_position();
+            let (x, y) = self.input_field_component.get_cursor_position();
             frame.set_cursor_position(CursorPosition::new(
                 input_area.x + x as u16 + 1,
                 input_area.y + y as u16 + 1,
@@ -527,5 +617,14 @@ impl UI {
         Scrollbar::new(ScrollbarOrientation::VerticalRight).render(show_chat_item_area, buf, &mut state);
         // 给聊天记录区域渲染边框
         chat_block.render(chat_area, buf);
+    }
+
+    /// 判断图片路径是否为空
+    fn blank_image(&self) -> bool {
+        if let Some(image_path) = self.image_path.clone() {
+            image_path.is_empty()
+        } else {
+            true
+        }
     }
 }

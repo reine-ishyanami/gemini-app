@@ -30,3 +30,7 @@ This is a Rust library for interacting with the Gemini API. It provides a simple
 4. enter something and press enter to ask the gemini.
 
 5. press tab to focus other components. like `input`, `esc`, `set` and so on.
+
+6. input a image path or url in the `input` textfield and press f4 to store the image for sending the request with the image in next time.
+
+7. press f4 to clear the image when setted the image.

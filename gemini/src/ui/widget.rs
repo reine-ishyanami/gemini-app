@@ -17,7 +17,7 @@ impl Widget for ChatMessage {
         Self: Sized,
     {
         match self.sender {
-            User => {
+            User(image_path) => {
                 let [_, right] = Layout::horizontal([Max(10), Fill(1)]).areas(area);
                 let [top, time_area] = Layout::vertical([Fill(1), Length(1)]).areas(right);
                 // 渲染时间
@@ -29,11 +29,16 @@ impl Widget for ChatMessage {
                 // 渲染头像
                 let avatar_paragraph = Paragraph::new("\n👤").style(Color::Blue).left_aligned();
                 avatar_paragraph.render(avatar_area, buf);
+                let title = if image_path.is_empty() {
+                    "Simple".into()
+                } else {
+                    format!("Image {}", image_path)
+                };
                 // 渲染消息内容
                 let message_block = if self.success {
-                    Block::default().green().borders(Borders::ALL)
+                    Block::default().title(title).green().borders(Borders::ALL)
                 } else {
-                    Block::default().red().borders(Borders::ALL)
+                    Block::default().title(title).red().borders(Borders::ALL)
                 };
                 let message_paragraph = Paragraph::new(self.message)
                     .wrap(Wrap { trim: false })

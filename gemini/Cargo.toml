@@ -1,11 +1,11 @@
 [package]
 name = "gemini"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 repository = "https://github.com/reine-ishyanami/gemini-app"
 
 [dependencies]
-gemini-api = { path = "../gemini-api", features = ["blocking"]}
+gemini-api = { path = "../gemini-api", features = ["blocking", "image_analysis"]}
 ratatui ={ workspace = true }
 anyhow = { workspace = true }
 chrono ={ workspace = true }

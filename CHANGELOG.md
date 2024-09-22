@@ -15,6 +15,10 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -->
 
+# Version 0.4.0 (2024-09-22)
+
+1. add gemini image analysis in application.
+
 # Version 0.3.1 (2024-09-19)
 
 1. fix the bug when the system instruction is blank.

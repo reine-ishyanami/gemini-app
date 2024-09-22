@@ -4,7 +4,7 @@ use super::input_trait::InputTextComponent;
 
 /// 单行输入框相关属性
 #[derive(Default)]
-pub(crate) struct TextField {
+pub struct TextField {
     /// 当前指针位置，光标指向输入字符串中第几位
     input_buffer_index: usize,
     /// 最左侧光标索引
@@ -123,10 +123,6 @@ impl InputTextComponent for TextField {
             let after_char_to_delete = self.input_buffer.chars().skip(current_index);
             self.input_buffer = before_char_to_delete.chain(after_char_to_delete).collect();
             self.move_cursor_left(delete_char);
-            if self.left_index != 0 {
-                self.left_index -= 1;
-                self.compact_right_index_by_left_index();
-            }
         }
     }
 
@@ -138,6 +134,8 @@ impl InputTextComponent for TextField {
             let before_char_to_delete = self.input_buffer.chars().take(current_index);
             let after_char_to_delete = self.input_buffer.chars().skip(from_left_to_current_index);
             self.input_buffer = before_char_to_delete.chain(after_char_to_delete).collect();
+            self.right_index -= 1;
+            self.compact_left_index_by_right_index();
         }
     }
 
@@ -160,7 +158,6 @@ impl InputTextComponent for TextField {
         self.left_index = 0;
         self.right_index = 0;
         self.cursor_position_x = 0;
-        self.home_of_cursor();
     }
 }
 
@@ -205,7 +202,7 @@ impl TextField {
         let input = self.input_buffer.clone();
         self.left_index = right;
         let mut width = 0;
-        for index in (0..right).rev() {
+        for index in (0..=right).rev() {
             if let Some(c) = input.chars().nth(index) {
                 width += c_len(c);
                 self.left_index -= 1;
@@ -230,7 +227,7 @@ impl TextField {
         let input = self.input_buffer.clone();
         self.right_index = left;
         let mut width = 0;
-        for index in (left..self.input_buffer.chars().count() - 1).rev() {
+        for index in (left..self.input_buffer.chars().count()).rev() {
             if let Some(c) = input.chars().nth(index) {
                 width += c_len(c);
                 self.right_index += 1;

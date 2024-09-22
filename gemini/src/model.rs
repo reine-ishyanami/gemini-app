@@ -18,8 +18,8 @@ pub struct ChatMessage {
 /// 发送者类型
 #[derive(Debug, Clone)]
 pub enum Sender {
-    /// 用户发送的消息
-    User,
+    /// 用户发送的消息, 0 为图片路径
+    User(String),
     /// AI回复的消息
     Bot,
     /// 用于换行的标记消息
