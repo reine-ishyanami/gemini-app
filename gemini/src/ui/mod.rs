@@ -227,47 +227,60 @@ impl UI {
             }
             match self.focus_component {
                 // 当聚焦于输入框时，处理输入
-                MainFocusComponent::InputArea => {
-                    // 如果是除 Tab 键外其他任意按键事件，则清空错误提示消息
-                    if key.code != event::KeyCode::Tab && self.response_status != ResponseStatus::None {
-                        self.response_status = ResponseStatus::None;
-                    }
-                    match key.code {
-                        event::KeyCode::Backspace => self.input_field_component.delete_pre_char(),
-                        event::KeyCode::Enter => self.submit_message(tx),
-                        event::KeyCode::Left => self
-                            .input_field_component
-                            .move_cursor_left(self.input_field_component.get_current_char()),
-                        event::KeyCode::Right => self
-                            .input_field_component
-                            .move_cursor_right(self.input_field_component.get_next_char()),
-                        event::KeyCode::Up => self.up(),
-                        event::KeyCode::Down => self.down(),
-                        event::KeyCode::Home => self.input_field_component.home_of_cursor(),
-                        event::KeyCode::End => self.input_field_component.end_of_cursor(),
-                        event::KeyCode::Delete => self.input_field_component.delete_suf_char(),
-                        event::KeyCode::Char(x) => self.input_field_component.enter_char(x),
-                        event::KeyCode::Tab => self.focus_component = MainFocusComponent::ExitButton,
-                        event::KeyCode::Esc => self.should_exit = true,
-                        event::KeyCode::F(4) => self.set_or_clear_image_path(),
-                        _ => {}
-                    };
-                }
+                MainFocusComponent::InputArea => self.handle_input_key_evnet(key, tx),
                 // 当聚焦于退出按钮时，处理退出
-                MainFocusComponent::ExitButton => match key.code {
-                    event::KeyCode::Enter | event::KeyCode::Esc => self.should_exit = true,
-                    event::KeyCode::Tab => self.focus_component = MainFocusComponent::SettingButton,
-                    _ => {}
-                },
+                MainFocusComponent::ExitButton => self.handle_exit_button_key_event(key),
                 // 当聚焦于退出按钮时，处理进入设置菜单
-                MainFocusComponent::SettingButton => match key.code {
-                    event::KeyCode::Esc => self.should_exit = true,
-                    event::KeyCode::Enter => self.open_setting_menu(),
-                    event::KeyCode::Tab => self.focus_component = MainFocusComponent::InputArea,
-                    _ => {}
-                },
+                MainFocusComponent::SettingButton => self.handle_setting_button_key_event(key),
             }
         }
+    }
+
+    /// 当聚焦于输入框时，处理输入
+    fn handle_input_key_evnet(&mut self, key: event::KeyEvent, tx: mpsc::Sender<ChatType>) {
+        // 如果是除 Tab 键外其他任意按键事件，则清空错误提示消息
+        if key.code != event::KeyCode::Tab && self.response_status != ResponseStatus::None {
+            self.response_status = ResponseStatus::None;
+        }
+        match key.code {
+            event::KeyCode::Backspace => self.input_field_component.delete_pre_char(),
+            event::KeyCode::Enter => self.submit_message(tx),
+            event::KeyCode::Left => self
+                .input_field_component
+                .move_cursor_left(self.input_field_component.get_current_char()),
+            event::KeyCode::Right => self
+                .input_field_component
+                .move_cursor_right(self.input_field_component.get_next_char()),
+            event::KeyCode::Up => self.up(),
+            event::KeyCode::Down => self.down(),
+            event::KeyCode::Home => self.input_field_component.home_of_cursor(),
+            event::KeyCode::End => self.input_field_component.end_of_cursor(),
+            event::KeyCode::Delete => self.input_field_component.delete_suf_char(),
+            event::KeyCode::Char(x) => self.input_field_component.enter_char(x),
+            event::KeyCode::Tab => self.focus_component = MainFocusComponent::ExitButton,
+            event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::F(4) => self.set_or_clear_image_path(),
+            _ => {}
+        };
+    }
+
+    /// 当聚焦于退出按钮时，处理退出
+    fn handle_exit_button_key_event(&mut self, key: event::KeyEvent) {
+        match key.code {
+            event::KeyCode::Enter | event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::Tab => self.focus_component = MainFocusComponent::SettingButton,
+            _ => {}
+        };
+    }
+
+    /// 当聚焦于退出按钮时，处理进入设置菜单
+    fn handle_setting_button_key_event(&mut self, key: event::KeyEvent) {
+        match key.code {
+            event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::Enter => self.open_setting_menu(),
+            event::KeyCode::Tab => self.focus_component = MainFocusComponent::InputArea,
+            _ => {}
+        };
     }
 
     /// 进入设置菜单

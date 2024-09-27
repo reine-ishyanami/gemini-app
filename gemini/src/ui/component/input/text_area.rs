@@ -1,4 +1,4 @@
-use crate::utils::char_utils::{c_len, length};
+use crate::utils::char_utils::{c_len, s_length};
 
 use super::input_trait::InputTextComponent;
 
@@ -285,7 +285,7 @@ impl TextArea {
     fn update_offset(&mut self, offset: isize) {
         self.offset = 0;
         for (i, line) in self.each_line_string.clone().iter().enumerate() {
-            let ele = length(line.clone());
+            let ele = s_length(line.clone());
             if i == self.cursor_position_y {
                 break;
             }
@@ -299,7 +299,7 @@ impl TextArea {
     fn get_len_of_line(&self, index: usize) -> usize {
         let str = self.each_line_string.get(index);
         if let Some(str) = str {
-            length(str.into())
+            s_length(str.into())
         } else {
             0
         }
@@ -352,7 +352,7 @@ impl TextArea {
         }
         // 遍历每一行
         for line in self.each_line_string.clone() {
-            let len = length(line);
+            let len = s_length(line);
             // // 如果本行宽度为 0，则表示换行，如果遍历完文本后还有换行，则继续换行
             if len == 0 && self.get_current_char() == '\n' {
                 self.cursor_position_y += 1;

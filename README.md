@@ -37,6 +37,8 @@ This is a Rust library for interacting with the Gemini API. It provides a simple
 
 ## ToDo
 
+[ ] history chat
+
 [ ] fix the textfield bug
 
 [ ] fix the textarea bug

@@ -1,4 +1,4 @@
-use crate::utils::char_utils::{c_len, length};
+use crate::utils::char_utils::{c_len, s_length};
 
 use super::input_trait::InputTextComponent;
 
@@ -44,7 +44,7 @@ impl InputTextComponent for TextField {
 
     fn end_of_cursor(&mut self) {
         self.input_buffer_index = self.input_buffer.chars().count();
-        self.cursor_position_x = length(self.input_buffer.clone());
+        self.cursor_position_x = s_length(self.input_buffer.clone());
         self.right_index = self.input_buffer_index;
         self.compact_left_index_by_right_index();
     }

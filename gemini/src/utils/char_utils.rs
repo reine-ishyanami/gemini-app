@@ -1,6 +1,14 @@
 #![allow(unused)]
 
 /// 计算字符宽度
+///
+/// # Examples
+/// ```
+/// assert_eq!(c_len('a'), 1);
+/// assert_eq!(c_len('中'), 2);
+/// assert_eq!(c_len('\n'), 0);
+/// assert_eq!(c_len('\0'), 0);
+/// ```
 pub(crate) fn c_len(c: char) -> usize {
     let width_0 = ['\n', '\0'];
     if width_0.contains(&c) {
@@ -63,6 +71,14 @@ fn is_chinese_punctuation(c: char) -> bool {
 }
 
 /// 获取输入框字符长度
-pub(crate) fn length(str: String) -> usize {
+///
+/// # Examples
+/// ```
+/// let s = "你好，世界！";
+/// assert_eq!(s_length(s), 12);
+/// let s = "Hello, World!"
+/// assert_eq!(s_length(s), 13);
+/// ```
+pub(crate) fn s_length(str: String) -> usize {
     str.chars().map(c_len).sum()
 }
