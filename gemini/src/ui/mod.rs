@@ -8,14 +8,15 @@ use std::sync::mpsc;
 use anyhow::Result;
 use chrono::Local;
 use component::input::{input_trait::InputTextComponent, text_field::TextField};
+use component::scroll::chat_show::ChatShowScrollProps;
 use gemini_api::body::request::GenerationConfig;
 use gemini_api::model::blocking::Gemini;
 use gemini_api::param::LanguageModel;
-use ratatui::buffer::Buffer;
-use ratatui::layout::{Alignment, Constraint, Position as CursorPosition, Rect};
+use ratatui::layout::Position as CursorPosition;
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::block::{Position as TitlePosition, Title};
-use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Widget};
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 use ratatui::{
     crossterm::event::{self, Event, KeyEventKind},
@@ -28,9 +29,8 @@ use ratatui::{
 };
 use setting::SettingUI;
 
-use crate::model::ChatMessage;
-use crate::model::Sender::{Bot, Split, User};
-use crate::utils::char_utils::c_len;
+use crate::model::view::ChatMessage;
+use crate::model::view::Sender::{Bot, Split, User};
 use crate::utils::store_utils::{read_config, save_config, StoreData};
 
 /// 窗口UI
@@ -42,19 +42,19 @@ pub struct UI {
     response_status: ResponseStatus,
     /// 是否应该退出程序
     should_exit: bool,
-    /// 聊天历史记录
-    chat_history: Vec<ChatMessage>,
     /// Gemini API
     gemini: Option<Gemini>,
     /// 当前聚焦的组件
     focus_component: MainFocusComponent,
     /// 输入区域组件
     input_field_component: TextField,
-    scroll_props: ScrollProps,
     /// 当前窗口
     current_windows: CurrentWindows,
     /// 图片路径
     image_path: Option<String>,
+    /// 侧边栏是否显示 TODO
+    _sidebar_show: bool,
+    scroll_props: ChatShowScrollProps,
 }
 /// 窗口枚举
 #[derive(Default)]
@@ -65,12 +65,19 @@ pub enum CurrentWindows {
 }
 
 /// 当前聚焦组件
-#[derive(Default, PartialEq, Eq)]
+#[derive(Default, PartialEq, Eq, Clone)]
 pub enum MainFocusComponent {
+    /// 输入框
     #[default]
-    InputArea,
-    ExitButton,
+    InputField,
+    /// 聊天记录列表
+    ChatItemList,
+    /// 新建聊天按钮
+    NewChatButton,
+    /// 设置按钮
     SettingButton,
+    /// 聊天内容显示区域
+    ChatShow,
 }
 
 /// 响应状态
@@ -86,19 +93,6 @@ pub enum ResponseStatus {
 enum ChatType {
     Simple { message: String },
     Image { message: String, image_path: String },
-}
-
-/// 滚动条相关属性
-#[derive(Default)]
-pub struct ScrollProps {
-    /// 滚动条偏移量
-    scroll_offset: u16,
-    /// 聊天历史记录区域高度
-    chat_history_area_height: u16,
-    /// 最后一条记录的高度
-    last_chat_history_height: u16,
-    /// 是否需要添加一条空记录
-    add_a_blank_line: bool,
 }
 
 impl UI {
@@ -133,7 +127,7 @@ impl UI {
     fn handle_key(&mut self, tx: mpsc::Sender<ChatType>, rx: &mpsc::Receiver<ChatType>) {
         if self.scroll_props.add_a_blank_line {
             self.scroll_props.add_a_blank_line = false;
-            self.chat_history.push(ChatMessage {
+            self.scroll_props.chat_history.push(ChatMessage {
                 success: true,
                 sender: Split,
                 message: String::new(),
@@ -155,7 +149,7 @@ impl UI {
                                 } else {
                                     response
                                 };
-                                self.chat_history.push(ChatMessage {
+                                self.scroll_props.chat_history.push(ChatMessage {
                                     success: true,
                                     sender: Bot,
                                     message: response,
@@ -171,9 +165,9 @@ impl UI {
                                     self.response_status = ResponseStatus::Failed("Unknown Error".into());
                                 }
                                 // 将最后一条消息状态修改为失败
-                                let mut chat_message = self.chat_history.pop().unwrap();
+                                let mut chat_message = self.scroll_props.chat_history.pop().unwrap();
                                 chat_message.success = false;
-                                self.chat_history.push(chat_message);
+                                self.scroll_props.chat_history.push(chat_message);
                             }
                         }
                     }
@@ -192,7 +186,7 @@ impl UI {
                                 } else {
                                     response
                                 };
-                                self.chat_history.push(ChatMessage {
+                                self.scroll_props.chat_history.push(ChatMessage {
                                     success: true,
                                     sender: Bot,
                                     message: response,
@@ -208,9 +202,9 @@ impl UI {
                                     self.response_status = ResponseStatus::Failed("Unknown Error".into());
                                 }
                                 // 将最后一条消息状态修改为失败
-                                let mut chat_message = self.chat_history.pop().unwrap();
+                                let mut chat_message = self.scroll_props.chat_history.pop().unwrap();
                                 chat_message.success = false;
-                                self.chat_history.push(chat_message);
+                                self.scroll_props.chat_history.push(chat_message);
                             }
                         }
                     }
@@ -227,13 +221,24 @@ impl UI {
             }
             match self.focus_component {
                 // 当聚焦于输入框时，处理输入
-                MainFocusComponent::InputArea => self.handle_input_key_evnet(key, tx),
-                // 当聚焦于退出按钮时，处理退出
-                MainFocusComponent::ExitButton => self.handle_exit_button_key_event(key),
-                // 当聚焦于退出按钮时，处理进入设置菜单
+                MainFocusComponent::InputField => self.handle_input_key_evnet(key, tx),
+                // 当聚焦于新建聊天按钮时，处理输入
+                MainFocusComponent::NewChatButton => self.handle_new_chat_key_evnet(key),
+                // 当聚焦于聊天列表时，处理输入
+                MainFocusComponent::ChatItemList => self.handle_chat_list_key_evnet(key),
+                // 当聚焦于设置按钮时，处理输入
                 MainFocusComponent::SettingButton => self.handle_setting_button_key_event(key),
+                // 当聚焦于聊天内容显示区域时，处理输入
+                MainFocusComponent::ChatShow => self.handle_chat_show_key_event(key),
             }
         }
+    }
+
+    /// 切换到下一个组件
+    fn next_component(&mut self) {
+        let current = self.focus_component.clone() as i32;
+        let next = (current + 1) % 5;
+        self.focus_component = next.try_into().unwrap();
     }
 
     /// 当聚焦于输入框时，处理输入
@@ -251,24 +256,47 @@ impl UI {
             event::KeyCode::Right => self
                 .input_field_component
                 .move_cursor_right(self.input_field_component.get_next_char()),
-            event::KeyCode::Up => self.up(),
-            event::KeyCode::Down => self.down(),
             event::KeyCode::Home => self.input_field_component.home_of_cursor(),
             event::KeyCode::End => self.input_field_component.end_of_cursor(),
             event::KeyCode::Delete => self.input_field_component.delete_suf_char(),
             event::KeyCode::Char(x) => self.input_field_component.enter_char(x),
-            event::KeyCode::Tab => self.focus_component = MainFocusComponent::ExitButton,
-            event::KeyCode::Esc => self.should_exit = true,
             event::KeyCode::F(4) => self.set_or_clear_image_path(),
+            event::KeyCode::Tab => self.next_component(),
+            event::KeyCode::Esc => self.should_exit = true,
             _ => {}
         };
     }
 
-    /// 当聚焦于退出按钮时，处理退出
-    fn handle_exit_button_key_event(&mut self, key: event::KeyEvent) {
+    /// 当聚焦于新建聊天按钮时，处理输入
+    fn handle_new_chat_key_evnet(&mut self, key: event::KeyEvent) {
         match key.code {
-            event::KeyCode::Enter | event::KeyCode::Esc => self.should_exit = true,
-            event::KeyCode::Tab => self.focus_component = MainFocusComponent::SettingButton,
+            event::KeyCode::Enter => {
+                self.receiving_message = false;
+                self.response_status = ResponseStatus::None;
+                if let Some(gemini) = self.gemini.clone() {
+                    let mut gemini_new = Gemini::rebuild(gemini.key, gemini.model, Vec::new(), gemini.options);
+                    gemini_new.set_system_instruction(gemini.system_instruction.unwrap_or("".into()));
+                    self.gemini = Some(gemini_new);
+                };
+                self.focus_component = MainFocusComponent::InputField;
+                self.input_field_component.clear();
+                self.image_path = None;
+                self.scroll_props = ChatShowScrollProps::default();
+            }
+            event::KeyCode::Tab => self.next_component(),
+            event::KeyCode::Esc => self.should_exit = true,
+            _ => {}
+        };
+    }
+
+    /// 当聚焦于聊天列表时，处理输入
+    fn handle_chat_list_key_evnet(&mut self, key: event::KeyEvent) {
+        match key.code {
+            event::KeyCode::Enter => todo!("加载聊天内容"),
+            event::KeyCode::Up => todo!("聚焦到上一个列表项"),
+            event::KeyCode::Down => todo!("聚焦到下一个列表项"),
+            event::KeyCode::Tab => self.next_component(),
+            event::KeyCode::Esc => self.should_exit = true,
             _ => {}
         };
     }
@@ -276,11 +304,22 @@ impl UI {
     /// 当聚焦于退出按钮时，处理进入设置菜单
     fn handle_setting_button_key_event(&mut self, key: event::KeyEvent) {
         match key.code {
-            event::KeyCode::Esc => self.should_exit = true,
             event::KeyCode::Enter => self.open_setting_menu(),
-            event::KeyCode::Tab => self.focus_component = MainFocusComponent::InputArea,
+            event::KeyCode::Tab => self.next_component(),
+            event::KeyCode::Esc => self.should_exit = true,
             _ => {}
         };
+    }
+
+    /// 当聚焦于聊天内容显示区域时，处理输入
+    fn handle_chat_show_key_event(&mut self, key: event::KeyEvent) {
+        match key.code {
+            event::KeyCode::Up => self.up(),
+            event::KeyCode::Down => self.down(),
+            event::KeyCode::Tab => self.next_component(),
+            event::KeyCode::Esc => self.should_exit = true,
+            _ => {}
+        }
     }
 
     /// 进入设置菜单
@@ -313,7 +352,7 @@ impl UI {
             if self.gemini.is_none() {
                 self.restore_or_new_gemini(Some(self.input_field_component.get_content()));
             } else {
-                self.chat_history.push(ChatMessage {
+                self.scroll_props.chat_history.push(ChatMessage {
                     success: true,
                     sender: User(image_path.clone()),
                     message: self.input_field_component.get_content(),
@@ -407,14 +446,70 @@ impl UI {
     /// 绘制UI
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
+        // 左侧宽度
+        let [left_area, right_area] = Layout::horizontal([Length(30), Fill(1)]).areas(area);
+        self.render_left_area(frame, left_area);
+        self.render_right_area(frame, right_area);
+    }
+
+    /// 渲染左侧区域
+    fn render_left_area(&mut self, frame: &mut Frame, left_area: Rect) {
+        let [title_area, list_area, new_chat_area, setting_area] =
+            Layout::vertical([Length(1), Fill(1), Length(3), Length(3)]).areas(left_area);
+        // 标题
+        let title_paragraph = Paragraph::new("History")
+            .style(Style::default().fg(Color::LightMagenta))
+            .centered();
+        frame.render_widget(title_paragraph, title_area);
+        // 聊天列表
+        let chat_list_block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(
+            if self.focus_component == MainFocusComponent::ChatItemList {
+                Color::Green
+            } else {
+                Color::White
+            },
+        ));
+        let none_paragraph = Paragraph::new("").block(chat_list_block);
+        frame.render_widget(none_paragraph, list_area);
+
+        // 新建聊天按钮
+        let new_chat_button_block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(
+            if self.focus_component == MainFocusComponent::NewChatButton {
+                Color::Green
+            } else {
+                Color::White
+            },
+        ));
+        let new_chat_button_text = Paragraph::new("New Chat")
+            .style(Style::default().fg(Color::LightBlue))
+            .block(new_chat_button_block)
+            .centered();
+        frame.render_widget(new_chat_button_text, new_chat_area);
+        // 设置按钮
+        let setting_button_block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(
+            if self.focus_component == MainFocusComponent::SettingButton {
+                Color::Green
+            } else {
+                Color::White
+            },
+        ));
+        let setting_button_text = Paragraph::new("Setting")
+            .style(Style::default().fg(Color::LightBlue))
+            .block(setting_button_block)
+            .centered();
+        frame.render_widget(setting_button_text, setting_area);
+    }
+
+    /// 渲染右侧区域
+    fn render_right_area(&mut self, frame: &mut Frame, right_area: Rect) {
         // 计算显示区域宽度
         // - 10 留出左右空白区域
         // -2 文本段落中的左右边框
         // -3 输入框左右两侧头像部分
         // -1 对齐中文文本
         // 如果没有减去这4个宽度，文本可能有显示问题，可以再减去任意宽度，以使得在输出的列表文本右侧留出对应宽度空白
-        let chat_area_width = || area.width as usize - 10 - 2 - 3 - 1;
-        let [header_area, chat_area, input_area] = Layout::vertical([Length(1), Fill(1), Length(3)]).areas(area);
+        let chat_area_width = || right_area.width as usize - 10 - 2 - 3 - 1;
+        let [header_area, chat_area, input_area] = Layout::vertical([Length(1), Fill(1), Length(3)]).areas(right_area);
         self.render_header_area(frame, header_area);
         // 输入区域（底部）
         self.render_input_area(frame, input_area);
@@ -424,31 +519,11 @@ impl UI {
 
     /// 渲染头部区域
     fn render_header_area(&mut self, frame: &mut Frame, header_area: Rect) {
-        let [left, center, right] = Layout::horizontal([Length(4), Fill(1), Length(4)]).areas(header_area);
-
-        // 根据是否选中组件变色
-        let left_color = if self.focus_component == MainFocusComponent::ExitButton {
-            Style::default().fg(Color::Green)
-        } else {
-            Style::default().fg(Color::White)
-        };
-
-        // 根据是否选中组件变色
-        let right_color = if self.focus_component == MainFocusComponent::SettingButton {
-            Style::default().fg(Color::Green)
-        } else {
-            Style::default().fg(Color::White)
-        };
-
-        let left_paragraph = Paragraph::new("EXIT").style(left_color).left_aligned();
-        frame.render_widget(left_paragraph, left);
-        let right_paragraph = Paragraph::new("SET").style(right_color).right_aligned();
-        frame.render_widget(right_paragraph, right);
-
-        let center_paragraph = Paragraph::new("Gemini Chat")
+        let title = "Gemini Chat";
+        let title_paragraph = Paragraph::new(title)
             .style(Style::default().fg(Color::LightBlue))
             .centered();
-        frame.render_widget(center_paragraph, center);
+        frame.render_widget(title_paragraph, header_area);
     }
 
     /// 渲染输入区域
@@ -476,27 +551,21 @@ impl UI {
             .alignment(Alignment::Right)
         };
         // 根据是否选中组件变色
-        let input_block = if self.focus_component == MainFocusComponent::InputArea {
-            Block::default()
-                .title(
-                    Title::from(input_block_title)
-                        .position(TitlePosition::Top)
-                        .alignment(Alignment::Left),
-                )
-                .title(title)
-                .border_style(Style::default().fg(Color::Green))
-                .borders(Borders::ALL)
-        } else {
-            Block::bordered()
-                .title(
-                    Title::from(input_block_title)
-                        .position(TitlePosition::Top)
-                        .alignment(Alignment::Left),
-                )
-                .title(title)
-                .border_style(Style::default().fg(Color::White))
-                .borders(Borders::ALL)
-        };
+        let input_block = Block::bordered()
+            .title(
+                Title::from(input_block_title)
+                    .position(TitlePosition::Top)
+                    .alignment(Alignment::Left),
+            )
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(
+                Style::default().fg(if self.focus_component == MainFocusComponent::InputField {
+                    Color::Green
+                } else {
+                    Color::White
+                }),
+            );
         // 输入框内容
         let text = self.input_field_component.should_show_text();
 
@@ -518,7 +587,7 @@ impl UI {
         };
 
         frame.render_widget(input_paragraph, input_area);
-        if self.focus_component == MainFocusComponent::InputArea {
+        if self.focus_component == MainFocusComponent::InputField {
             let (x, y) = self.input_field_component.get_cursor_position();
             frame.set_cursor_position(CursorPosition::new(
                 input_area.x + x as u16 + 1,
@@ -532,104 +601,8 @@ impl UI {
     where
         F: Fn() -> usize,
     {
-        let chat_block = Block::default()
-            .border_style(Style::default().fg(Color::DarkGray))
-            .borders(Borders::ALL);
-        let items: Vec<ChatMessage> = self
-            .chat_history
-            .iter()
-            .map(|m| {
-                let area_width = chat_area_width();
-                let mut message = String::new();
-                // 对长文本进行插入换行符号
-                let mut line_width = 0;
-                for (_, c) in m.message.clone().char_indices() {
-                    // 如果当前行宽度正好为组件宽度，则插入换行符
-                    if line_width == area_width {
-                        message.push('\n');
-                        line_width = 0;
-                    }
-                    // 如果当前字符宽度大于组件宽度，则在最后一个字符之前插入换行符插入换行符
-                    if line_width > area_width {
-                        let c = message.pop().unwrap();
-                        message.push('\n');
-                        message.push(c);
-                        line_width = c_len(c);
-                    }
-                    message.push(c);
-                    line_width += c_len(c);
-                    if c == '\n' {
-                        line_width = 0;
-                    }
-                }
-                ChatMessage { message, ..m.clone() }
-            })
-            .collect();
-        // 保存最后一条记录的高度，用于计算滚动条位置
-        self.scroll_props.last_chat_history_height = items
-            .clone()
-            .iter()
-            .last()
-            .map_or(0, |item| item.message.lines().count() + 3)
-            as u16;
-        // 计算当前聊天记录区域高度
-        self.scroll_props.chat_history_area_height = items
-            .clone()
-            .iter()
-            .map(|item| item.message.lines().count() as u16 + 3)
-            .sum();
-
-        let layouts: Vec<Constraint> = items
-            .clone()
-            .iter()
-            .map(|item| {
-                if let Split = item.sender {
-                    Length(1)
-                } else {
-                    Length(item.message.lines().count() as u16 + 3)
-                }
-            })
-            .collect();
-
-        let chat_area_x = chat_area.x;
-        let chat_area_y = chat_area.y;
-        let chat_area_width = chat_area.width;
-        let chat_area_height = chat_area.height;
-
-        // 聊天区域高度，如果大于聊天记录区域高度，则显示聊天记录区域高度（可能有问题）TODO
-        let height = if chat_area_height > self.scroll_props.chat_history_area_height {
-            chat_area_height
-        } else {
-            // 滚动到最新的一条消息
-            self.scroll_props.chat_history_area_height
-        };
-        // 这块区域将不会被实际渲染，此处 y + 1 为去掉上边框, height - 1 为去掉下边框
-        let chat_list_full_area = Rect::new(chat_area_x, chat_area_y + 1, chat_area_width, height - 1);
-        let mut chat_list_full_area_buf = Buffer::empty(chat_list_full_area);
-
-        let areas = Layout::vertical(layouts).split(chat_list_full_area);
-        for (area, chat_message) in areas.iter().zip(items.iter()) {
-            chat_message.clone().render(*area, &mut chat_list_full_area_buf);
-        }
-
-        let visible_content = chat_list_full_area_buf
-            .content
-            .into_iter()
-            .skip((chat_area_width * self.scroll_props.scroll_offset) as usize) // 跳过滚动条滚动位置头部的区域
-            .take((chat_area_width * (chat_area_height - 2)) as usize); // 取出可见区域的内容，此处 -2 为去掉上边框和下边框（受上面的 y + 1 和 height - 1 影响，此处必须如此）
-
-        let buf = frame.buffer_mut();
-        for (i, cell) in visible_content.enumerate() {
-            let x = i as u16 % chat_area_width;
-            let y = i as u16 / chat_area_width;
-            buf[(chat_list_full_area.x + x, chat_list_full_area.y + y)] = cell;
-        }
-
-        let show_chat_item_area = chat_list_full_area.intersection(buf.area);
-        let mut state = ScrollbarState::new(0).position(self.scroll_props.scroll_offset as usize);
-        Scrollbar::new(ScrollbarOrientation::VerticalRight).render(show_chat_item_area, buf, &mut state);
-        // 给聊天记录区域渲染边框
-        chat_block.render(chat_area, buf);
+        let is_focused = self.focus_component == MainFocusComponent::ChatShow;
+        self.scroll_props.draw(frame, chat_area, chat_area_width, is_focused);
     }
 
     /// 判断图片路径是否为空

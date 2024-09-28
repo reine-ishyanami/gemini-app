@@ -3,15 +3,15 @@ use std::cmp::max;
 use ratatui::{
     layout::{
         Constraint::{Fill, Length, Max},
-        Layout,
+        Flex, Layout,
     },
     style::{Color, Stylize},
     widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 
-use crate::{model::ChatMessage, utils::char_utils::s_length};
+use crate::{model::view::ChatMessage, utils::char_utils::s_length};
 
-use crate::model::Sender::{Bot, Split, User};
+use crate::model::view::Sender::{Bot, Split, User};
 
 impl Widget for ChatMessage {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
@@ -38,14 +38,19 @@ impl Widget for ChatMessage {
                 // 拿到最大宽度
                 let width = max(x, s_length(title.clone())) as u16;
                 // 魔法数 5 为左右边框宽度 1 + 1 加上头像区域宽度 3
-                let [_, right] = Layout::horizontal([Fill(1), Max(width + 5)]).areas(area);
+                // 此处之所以和 21 比较，因为21是时间显示区域的宽度，不得少于这个宽度，否则时间显示会有问题
+                let [right] = Layout::horizontal([Max(max(width + 5, 21))])
+                    .flex(Flex::End)
+                    .areas(area);
                 let [top, time_area] = Layout::vertical([Fill(1), Length(1)]).areas(right);
                 // 渲染时间
                 let time_paragraph = Paragraph::new(self.date_time.format(" %Y/%m/%d %H:%M:%S ").to_string())
                     .style(Color::Blue)
                     .right_aligned();
                 time_paragraph.render(time_area, buf);
-                let [content_area, avatar_area] = Layout::horizontal([Max(width + 2), Length(3)]).areas(top);
+                let [content_area, avatar_area] = Layout::horizontal([Max(width + 2), Length(3)])
+                    .flex(Flex::End)
+                    .areas(top);
                 // 渲染头像
                 let avatar_paragraph = Paragraph::new("\n👤").left_aligned();
                 avatar_paragraph.render(avatar_area, buf);
@@ -73,14 +78,16 @@ impl Widget for ChatMessage {
                     .max()
                     .unwrap_or_default() as u16;
                 // 魔法数 5 为左右边框宽度 1 + 1 加上头像区域宽度 3
-                let [left, _] = Layout::horizontal([Max(width + 5), Fill(1)]).areas(area);
+                let [left] = Layout::horizontal([Max(width + 5)]).flex(Flex::Start).areas(area);
                 let [top, time_area] = Layout::vertical([Fill(1), Length(1)]).areas(left);
                 // 渲染时间
                 let time_paragraph = Paragraph::new(self.date_time.format(" %Y/%m/%d %H:%M:%S ").to_string())
                     .style(Color::Blue)
                     .left_aligned();
                 time_paragraph.render(time_area, buf);
-                let [avatar_area, content_area] = Layout::horizontal([Length(3), Max(width + 2)]).areas(top);
+                let [avatar_area, content_area] = Layout::horizontal([Length(3), Max(width + 2)])
+                    .flex(Flex::Start)
+                    .areas(top);
                 // 渲染头像
                 let avatar_paragraph = Paragraph::new("\n🤖").right_aligned();
                 avatar_paragraph.render(avatar_area, buf);

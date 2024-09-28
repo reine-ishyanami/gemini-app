@@ -35,10 +35,12 @@ This is a Rust library for interacting with the Gemini API. It provides a simple
 
 7. press f4 to clear the image when setted the image.
 
+8. press tab to switch focus next component.
+
 ## ToDo
 
-[ ] history chat
+- [ ] history chat
 
-[ ] fix the textfield bug
+- [ ] fix the textfield bug
 
-[ ] fix the textarea bug
+- [ ] fix the textarea bug
