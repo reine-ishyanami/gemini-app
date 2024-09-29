@@ -30,7 +30,7 @@ pub fn create_table() -> Result<()> {
     let sql_file = include_str!("../../migrations/20240229_create.sql");
     let mut binding = DB_CONNECTION;
     let conn = binding.borrow_mut();
-    let _ = conn.execute(sql_file, ())?;
+    conn.execute_batch(sql_file)?;
     Ok(())
 }
 
@@ -107,13 +107,31 @@ pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
 
 /// 根据对话 ID 删除一个对话
 pub fn delete_one(conversation_id: String) -> Result<()> {
+    let mut binding = DB_CONNECTION;
+    let conn = binding.borrow();
+    let sql = format!(
+        r#"
+    PRAGMA foreign_keys = ON;
+    DELETE FROM gemini_conversion WHERE conversation_id = '{}';
+    PRAGMA foreign_keys = OFF;
+    "#,
+        conversation_id
+    );
+    conn.execute_batch(sql.as_str());
+    Ok(())
+}
+
+/// 保存对话
+pub fn save_conversation() -> Result<()> {
     todo!()
 }
 
-pub fn insert_one_into(chat_message: ChatMessage, chat_id: i32) {
+/// 插入一条消息到当前对话
+pub fn insert_one_into(chat_message: ChatMessage, conversation_id: i32) {
     todo!()
 }
 
+/// 生成唯一 ID
 pub fn generate_unique_id() -> String {
     nanoid!(10)
 }

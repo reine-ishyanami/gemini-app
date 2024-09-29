@@ -31,7 +31,7 @@ use setting::SettingUI;
 
 use crate::model::view::ChatMessage;
 use crate::model::view::Sender::{Bot, Split, User};
-use crate::utils::db_utils::generate_unique_id;
+use crate::utils::db_utils::{create_table, generate_unique_id};
 use crate::utils::store_utils::{read_config, save_config, StoreData};
 
 /// 窗口UI
@@ -103,6 +103,8 @@ enum ChatType {
 impl UI {
     /// 启动UI
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
+        // 与数据库建立连接
+        create_table()?;
         let (tx, rx) = mpsc::channel();
         self.restore_or_new_gemini(None);
         while !self.should_exit {
