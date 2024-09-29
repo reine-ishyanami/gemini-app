@@ -37,8 +37,8 @@ impl TryFrom<i32> for MainFocusComponent {
     fn try_from(v: i32) -> Result<Self, Self::Error> {
         match v {
             x if x == MainFocusComponent::InputField as i32 => Ok(MainFocusComponent::InputField),
-            x if x == MainFocusComponent::ChatItemList as i32 => Ok(MainFocusComponent::ChatItemList),
             x if x == MainFocusComponent::NewChatButton as i32 => Ok(MainFocusComponent::NewChatButton),
+            x if x == MainFocusComponent::ChatItemList as i32 => Ok(MainFocusComponent::ChatItemList),
             x if x == MainFocusComponent::SettingButton as i32 => Ok(MainFocusComponent::SettingButton),
             x if x == MainFocusComponent::ChatShow as i32 => Ok(MainFocusComponent::ChatShow),
             _ => Err(()),

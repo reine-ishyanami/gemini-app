@@ -56,7 +56,10 @@ impl Widget for ChatMessage {
                 avatar_paragraph.render(avatar_area, buf);
                 // 渲染消息内容
                 let message_block = if self.success {
-                    Block::default().title(title).green().borders(Borders::ALL)
+                    Block::default()
+                        .title(title)
+                        .style(Color::DarkGray)
+                        .borders(Borders::ALL)
                 } else {
                     Block::default().title(title).red().borders(Borders::ALL)
                 };
@@ -92,7 +95,7 @@ impl Widget for ChatMessage {
                 let avatar_paragraph = Paragraph::new("\n🤖").right_aligned();
                 avatar_paragraph.render(avatar_area, buf);
                 // 渲染消息内容
-                let message_block = Block::default().green().borders(Borders::ALL);
+                let message_block = Block::default().style(Color::DarkGray).borders(Borders::ALL);
                 let message_paragraph = Paragraph::new(self.message)
                     .wrap(Wrap { trim: false })
                     .style(Color::Yellow)

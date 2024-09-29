@@ -37,6 +37,8 @@ This is a Rust library for interacting with the Gemini API. It provides a simple
 
 8. press tab to switch focus next component.
 
+9. press F3 to open/close side bar.
+
 ## ToDo
 
 - [ ] history chat

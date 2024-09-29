@@ -241,7 +241,7 @@ impl InputTextComponent for TextArea {
 impl TextArea {
     // 初始化
     pub fn new(input_buffer: String) -> Self {
-        TextArea {
+        Self {
             input_buffer,
             ..Default::default()
         }

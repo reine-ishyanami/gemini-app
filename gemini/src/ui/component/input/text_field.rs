@@ -164,7 +164,7 @@ impl InputTextComponent for TextField {
 impl TextField {
     // 初始化
     pub fn new(input_buffer: String) -> Self {
-        TextField {
+        Self {
             input_buffer,
             ..Default::default()
         }

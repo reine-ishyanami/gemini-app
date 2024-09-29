@@ -11,6 +11,8 @@ serde = { version = "1.0", features = ["derive"] }  # 序列化/反序列化库
 serde_json = "1.0.127"  # 序列化/反序列化库
 ratatui = "0.28.1"  # 终端UI库
 chrono = "0.4.38"  # 时间处理库
+nanoid = "0.4.0"  # 唯一ID生成库
+rusqlite  = {version = "0.32.1", features = ["bundled", "chrono"]}  # 数据库驱动库
 
 # Config for 'cargo dist'
 [workspace.metadata.dist]

@@ -31,6 +31,7 @@ use setting::SettingUI;
 
 use crate::model::view::ChatMessage;
 use crate::model::view::Sender::{Bot, Split, User};
+use crate::utils::db_utils::generate_unique_id;
 use crate::utils::store_utils::{read_config, save_config, StoreData};
 
 /// 窗口UI
@@ -52,8 +53,12 @@ pub struct UI {
     current_windows: CurrentWindows,
     /// 图片路径
     image_path: Option<String>,
-    /// 侧边栏是否显示 TODO
-    _sidebar_show: bool,
+    /// 侧边栏是否显示
+    sidebar_show: bool,
+    /// 对话标题内容
+    title: String,
+    /// 对话 id
+    conversation_id: String,
     scroll_props: ChatShowScrollProps,
 }
 /// 窗口枚举
@@ -70,10 +75,10 @@ pub enum MainFocusComponent {
     /// 输入框
     #[default]
     InputField,
-    /// 聊天记录列表
-    ChatItemList,
     /// 新建聊天按钮
     NewChatButton,
+    /// 聊天记录列表
+    ChatItemList,
     /// 设置按钮
     SettingButton,
     /// 聊天内容显示区域
@@ -143,6 +148,12 @@ impl UI {
                         match self.gemini.as_mut().unwrap().chat_conversation(message) {
                             // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
                             Ok(response) => {
+                                if self.conversation_id.is_empty() {
+                                    // 总结标题
+                                    let title = self.summary_by_gemini(response.clone());
+                                    self.title = title;
+                                    self.conversation_id = generate_unique_id();
+                                }
                                 let response = response.replace("\n\n", "\n");
                                 let response = if response.ends_with("\n") {
                                     response[..response.len() - 1].to_owned()
@@ -236,9 +247,17 @@ impl UI {
 
     /// 切换到下一个组件
     fn next_component(&mut self) {
-        let current = self.focus_component.clone() as i32;
-        let next = (current + 1) % 5;
-        self.focus_component = next.try_into().unwrap();
+        if self.sidebar_show {
+            let current = self.focus_component.clone() as i32;
+            let next = (current + 1) % 5;
+            self.focus_component = next.try_into().unwrap();
+        } else {
+            self.focus_component = match self.focus_component {
+                MainFocusComponent::InputField => MainFocusComponent::ChatShow,
+                MainFocusComponent::ChatShow => MainFocusComponent::InputField,
+                _ => MainFocusComponent::InputField,
+            }
+        }
     }
 
     /// 当聚焦于输入框时，处理输入
@@ -261,6 +280,7 @@ impl UI {
             event::KeyCode::Delete => self.input_field_component.delete_suf_char(),
             event::KeyCode::Char(x) => self.input_field_component.enter_char(x),
             event::KeyCode::F(4) => self.set_or_clear_image_path(),
+            event::KeyCode::F(3) => self.sidebar_show = !self.sidebar_show,
             event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Esc => self.should_exit = true,
             _ => {}
@@ -281,10 +301,12 @@ impl UI {
                 self.focus_component = MainFocusComponent::InputField;
                 self.input_field_component.clear();
                 self.image_path = None;
+                self.title = "".into();
                 self.scroll_props = ChatShowScrollProps::default();
             }
             event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::F(3) => self.sidebar_show = !self.sidebar_show,
             _ => {}
         };
     }
@@ -297,6 +319,7 @@ impl UI {
             event::KeyCode::Down => todo!("聚焦到下一个列表项"),
             event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::F(3) => self.sidebar_show = !self.sidebar_show,
             _ => {}
         };
     }
@@ -307,6 +330,7 @@ impl UI {
             event::KeyCode::Enter => self.open_setting_menu(),
             event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::F(3) => self.sidebar_show = !self.sidebar_show,
             _ => {}
         };
     }
@@ -318,6 +342,7 @@ impl UI {
             event::KeyCode::Down => self.down(),
             event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::F(3) => self.sidebar_show = !self.sidebar_show,
             _ => {}
         }
     }
@@ -443,35 +468,37 @@ impl UI {
         self.gemini = Some(gemini)
     }
 
+    /// 通过纯净的 Gemini API 获取对话摘要
+    fn summary_by_gemini(&self, message: String) -> String {
+        let gemini = self.gemini.clone().unwrap();
+        let mut pure_gemini = Gemini::new(gemini.key, LanguageModel::Gemini1_5Flash);
+        pure_gemini.set_options(gemini.options.clone());
+        pure_gemini.set_system_instruction("请给我概括一下这段文字内容，不包含任意标点符号，不大于15字。".into());
+        pure_gemini.chat_once(message).unwrap_or_default()
+    }
+
     /// 绘制UI
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
         // 左侧宽度
-        let [left_area, right_area] = Layout::horizontal([Length(30), Fill(1)]).areas(area);
-        self.render_left_area(frame, left_area);
-        self.render_right_area(frame, right_area);
+        if self.sidebar_show {
+            let [left_area, right_area] = Layout::horizontal([Length(30), Fill(1)]).areas(area);
+            self.render_left_area(frame, left_area);
+            self.render_right_area(frame, right_area);
+        } else {
+            self.render_right_area(frame, area);
+        }
     }
 
     /// 渲染左侧区域
     fn render_left_area(&mut self, frame: &mut Frame, left_area: Rect) {
-        let [title_area, list_area, new_chat_area, setting_area] =
-            Layout::vertical([Length(1), Fill(1), Length(3), Length(3)]).areas(left_area);
+        let [title_area, new_chat_area, list_area, setting_area] =
+            Layout::vertical([Length(1), Length(3), Fill(1), Length(3)]).areas(left_area);
         // 标题
         let title_paragraph = Paragraph::new("History")
             .style(Style::default().fg(Color::LightMagenta))
             .centered();
         frame.render_widget(title_paragraph, title_area);
-        // 聊天列表
-        let chat_list_block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(
-            if self.focus_component == MainFocusComponent::ChatItemList {
-                Color::Green
-            } else {
-                Color::White
-            },
-        ));
-        let none_paragraph = Paragraph::new("").block(chat_list_block);
-        frame.render_widget(none_paragraph, list_area);
-
         // 新建聊天按钮
         let new_chat_button_block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(
             if self.focus_component == MainFocusComponent::NewChatButton {
@@ -485,6 +512,16 @@ impl UI {
             .block(new_chat_button_block)
             .centered();
         frame.render_widget(new_chat_button_text, new_chat_area);
+        // 聊天列表
+        let chat_list_block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(
+            if self.focus_component == MainFocusComponent::ChatItemList {
+                Color::Green
+            } else {
+                Color::White
+            },
+        ));
+        let none_paragraph = Paragraph::new("").block(chat_list_block);
+        frame.render_widget(none_paragraph, list_area);
         // 设置按钮
         let setting_button_block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(
             if self.focus_component == MainFocusComponent::SettingButton {
@@ -519,11 +556,22 @@ impl UI {
 
     /// 渲染头部区域
     fn render_header_area(&mut self, frame: &mut Frame, header_area: Rect) {
-        let title = "Gemini Chat";
+        let [tip_area, title_area] = Layout::horizontal([Length(5), Fill(1)]).areas(header_area);
+        let tip_text = if self.sidebar_show { "< F3" } else { "> F3" };
+        let tip_paragraph = Paragraph::new(tip_text)
+            .style(Style::default().fg(Color::Red))
+            .centered();
+        frame.render_widget(tip_paragraph, tip_area);
+
+        let title = if self.conversation_id.is_empty() {
+            "Gemini Chat"
+        } else {
+            self.title.as_str()
+        };
         let title_paragraph = Paragraph::new(title)
             .style(Style::default().fg(Color::LightBlue))
             .centered();
-        frame.render_widget(title_paragraph, header_area);
+        frame.render_widget(title_paragraph, title_area);
     }
 
     /// 渲染输入区域
