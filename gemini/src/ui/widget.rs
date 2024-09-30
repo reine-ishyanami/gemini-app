@@ -2,16 +2,22 @@ use std::cmp::max;
 
 use ratatui::{
     layout::{
+        Alignment,
         Constraint::{Fill, Length, Max},
         Flex, Layout,
     },
     style::{Color, Stylize},
-    widgets::{Block, Borders, Paragraph, Widget, Wrap},
+    widgets::{
+        block::{Position, Title},
+        Block, Borders, Paragraph, Widget, Wrap,
+    },
 };
 
 use crate::{model::view::ChatMessage, utils::char_utils::s_length};
 
 use crate::model::view::Sender::{Bot, Split, User};
+
+use super::component::scroll::chat_item_list::SelectableConversation;
 
 impl Widget for ChatMessage {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
@@ -81,7 +87,9 @@ impl Widget for ChatMessage {
                     .max()
                     .unwrap_or_default() as u16;
                 // 魔法数 5 为左右边框宽度 1 + 1 加上头像区域宽度 3
-                let [left] = Layout::horizontal([Max(width + 5)]).flex(Flex::Start).areas(area);
+                let [left] = Layout::horizontal([Max(max(width + 5, 21))])
+                    .flex(Flex::Start)
+                    .areas(area);
                 let [top, time_area] = Layout::vertical([Fill(1), Length(1)]).areas(left);
                 // 渲染时间
                 let time_paragraph = Paragraph::new(self.date_time.format(" %Y/%m/%d %H:%M:%S ").to_string())
@@ -107,5 +115,39 @@ impl Widget for ChatMessage {
                 Paragraph::new("").render(area, buf);
             }
         }
+    }
+}
+
+impl Widget for SelectableConversation {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        let border_color = if self.selected && self.focused {
+            Color::Blue
+        } else {
+            Color::White
+        };
+        let title = self.conversation.conversation_title;
+        let date_time = self
+            .conversation
+            .conversation_start_time
+            .format(" %m/%d %H:%M ")
+            .to_string();
+        // 去掉上下两侧边框
+        let [_, title_area, _] = Layout::vertical([Length(1), Length(1), Length(1)]).areas(area);
+        // 标题区域
+        let title_paragraph = Paragraph::new(format!(" {} ", title));
+        title_paragraph.render(title_area, buf);
+        // 边框
+        let border_block = Block::bordered()
+            .title(
+                Title::from(date_time)
+                    .position(Position::Bottom)
+                    .alignment(Alignment::Right),
+            )
+            .borders(Borders::ALL)
+            .border_style(border_color);
+        border_block.render(area, buf);
     }
 }

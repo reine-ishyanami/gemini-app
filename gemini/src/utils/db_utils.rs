@@ -134,7 +134,7 @@ pub fn save_conversation(conversation_id: String, conversation_title: String, me
     // 查询是否存在此会话
     let mut stmt = conn.prepare(
         r#"
-        SELECT conversation_id FROM gemini_conversation WHERE conversation_id = ?1
+        SELECT conversation_id FROM main.gemini_conversation WHERE conversation_id = ?1
         "#,
     )?;
     let exists = stmt
@@ -171,8 +171,8 @@ pub fn save_conversation(conversation_id: String, conversation_title: String, me
     )?;
     let sort_index = stmt
         .query_row([conversation_id.clone()], |row| {
-            let sort_index: i32 = row.get(0)?;
-            Ok(sort_index + 1)
+            let sort_index: Option<i32> = row.get(0)?;
+            Ok(sort_index.unwrap_or_default())
         })
         .map_or(0, |index| index + 1);
 

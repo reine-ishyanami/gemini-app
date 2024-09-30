@@ -5,6 +5,7 @@ use chrono::{DateTime, Local};
 use super::view::Sender;
 
 /// 一个聊天记录项
+#[derive(Debug, Clone)]
 pub struct Conversation {
     /// conversation id
     pub conversation_id: String,
@@ -19,6 +20,7 @@ pub struct Conversation {
 }
 
 /// 单条聊天记录
+#[derive(Debug, Clone)]
 pub struct MessageRecord {
     /// 记录 id
     pub record_id: String,
@@ -37,6 +39,7 @@ pub struct MessageRecord {
 }
 
 /// 单条聊天记录携带的图片
+#[derive(Debug, Clone)]
 pub struct ImageRecord {
     /// 图片记录 id
     pub image_record_id: String,

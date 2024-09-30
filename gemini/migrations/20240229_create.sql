@@ -1,8 +1,8 @@
 PRAGMA foreign_keys = ON;
 -- ----------------------------
--- Table structure for gemini_conversion
+-- Table structure for gemini_conversation
 -- ----------------------------
-CREATE TABLE IF NOT EXISTS "gemini_conversion" (
+CREATE TABLE IF NOT EXISTS "gemini_conversation" (
   "conversation_id" TEXT NOT NULL,
   "conversation_title" TEXT,
   "conversation_start_time" DATE,
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS "gemini_message_record" (
   "record_sender" TEXT,
   "sort_index" INTEGER DEFAULT 0,
   PRIMARY KEY ("record_id"),
-  FOREIGN KEY ("conversation_id") REFERENCES "gemini_conversion" ("conversation_id") ON DELETE CASCADE ON UPDATE CASCADE
+  FOREIGN KEY ("conversation_id") REFERENCES "gemini_conversation" ("conversation_id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 -- ----------------------------
 -- Table structure for gemini_image_record

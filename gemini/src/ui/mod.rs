@@ -8,6 +8,7 @@ use std::sync::mpsc;
 use anyhow::Result;
 use chrono::Local;
 use component::input::{input_trait::InputTextComponent, text_field::TextField};
+use component::scroll::chat_item_list::ChatItemListScrollProps;
 use component::scroll::chat_show::ChatShowScrollProps;
 use gemini_api::body::request::GenerationConfig;
 use gemini_api::model::blocking::Gemini;
@@ -31,7 +32,7 @@ use setting::SettingUI;
 
 use crate::model::view::ChatMessage;
 use crate::model::view::Sender::{Bot, Split, User};
-use crate::utils::db_utils::{create_table, generate_unique_id};
+use crate::utils::db_utils::{create_table, generate_unique_id, save_conversation};
 use crate::utils::store_utils::{read_config, save_config, StoreData};
 
 /// 窗口UI
@@ -59,7 +60,8 @@ pub struct UI {
     title: String,
     /// 对话 id
     conversation_id: String,
-    scroll_props: ChatShowScrollProps,
+    chat_item_list: ChatItemListScrollProps,
+    chat_show: ChatShowScrollProps,
 }
 /// 窗口枚举
 #[derive(Default)]
@@ -132,9 +134,9 @@ impl UI {
 
     /// 处理按键事件
     fn handle_key(&mut self, tx: mpsc::Sender<ChatType>, rx: &mpsc::Receiver<ChatType>) {
-        if self.scroll_props.add_a_blank_line {
-            self.scroll_props.add_a_blank_line = false;
-            self.scroll_props.chat_history.push(ChatMessage {
+        if self.chat_show.add_a_blank_line {
+            self.chat_show.add_a_blank_line = false;
+            self.chat_show.chat_history.push(ChatMessage {
                 success: true,
                 sender: Split,
                 message: String::new(),
@@ -156,19 +158,34 @@ impl UI {
                                     self.title = title;
                                     self.conversation_id = generate_unique_id();
                                 }
+                                // 推送用户发送的消息保存到数据库
+                                let chat_message = self.chat_show.chat_history.pop().unwrap();
+                                let _ = save_conversation(
+                                    self.conversation_id.clone(),
+                                    self.title.clone(),
+                                    chat_message.clone(),
+                                );
+                                self.chat_show.chat_history.push(chat_message);
                                 let response = response.replace("\n\n", "\n");
                                 let response = if response.ends_with("\n") {
                                     response[..response.len() - 1].to_owned()
                                 } else {
                                     response
                                 };
-                                self.scroll_props.chat_history.push(ChatMessage {
+                                let chat_message = ChatMessage {
                                     success: true,
                                     sender: Bot,
                                     message: response,
                                     date_time: Local::now(),
-                                });
-                                self.scroll_props.add_a_blank_line = true;
+                                };
+                                // 推送接收到的消息保存到数据库
+                                let _ = save_conversation(
+                                    self.conversation_id.clone(),
+                                    self.title.clone(),
+                                    chat_message.clone(),
+                                );
+                                self.chat_show.chat_history.push(chat_message);
+                                self.chat_show.add_a_blank_line = true;
                             }
                             // 接收响应消息失败，将响应状态位改为失败，并提供错误信息
                             Err(e) => {
@@ -178,9 +195,9 @@ impl UI {
                                     self.response_status = ResponseStatus::Failed("Unknown Error".into());
                                 }
                                 // 将最后一条消息状态修改为失败
-                                let mut chat_message = self.scroll_props.chat_history.pop().unwrap();
+                                let mut chat_message = self.chat_show.chat_history.pop().unwrap();
                                 chat_message.success = false;
-                                self.scroll_props.chat_history.push(chat_message);
+                                self.chat_show.chat_history.push(chat_message);
                             }
                         }
                     }
@@ -199,13 +216,13 @@ impl UI {
                                 } else {
                                     response
                                 };
-                                self.scroll_props.chat_history.push(ChatMessage {
+                                self.chat_show.chat_history.push(ChatMessage {
                                     success: true,
                                     sender: Bot,
                                     message: response,
                                     date_time: Local::now(),
                                 });
-                                self.scroll_props.add_a_blank_line = true;
+                                self.chat_show.add_a_blank_line = true;
                             }
                             // 接收响应消息失败，将响应状态位改为失败，并提供错误信息
                             Err(e) => {
@@ -215,9 +232,9 @@ impl UI {
                                     self.response_status = ResponseStatus::Failed("Unknown Error".into());
                                 }
                                 // 将最后一条消息状态修改为失败
-                                let mut chat_message = self.scroll_props.chat_history.pop().unwrap();
+                                let mut chat_message = self.chat_show.chat_history.pop().unwrap();
                                 chat_message.success = false;
-                                self.scroll_props.chat_history.push(chat_message);
+                                self.chat_show.chat_history.push(chat_message);
                             }
                         }
                     }
@@ -304,7 +321,8 @@ impl UI {
                 self.input_field_component.clear();
                 self.image_path = None;
                 self.title = "".into();
-                self.scroll_props = ChatShowScrollProps::default();
+                self.conversation_id = "".into();
+                self.chat_show = ChatShowScrollProps::default();
             }
             event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Esc => self.should_exit = true,
@@ -316,9 +334,20 @@ impl UI {
     /// 当聚焦于聊天列表时，处理输入
     fn handle_chat_list_key_evnet(&mut self, key: event::KeyEvent) {
         match key.code {
-            event::KeyCode::Enter => todo!("加载聊天内容"),
-            event::KeyCode::Up => todo!("聚焦到上一个列表项"),
-            event::KeyCode::Down => todo!("聚焦到下一个列表项"),
+            event::KeyCode::Enter => {
+                let conversation = self.chat_item_list.rebuild();
+                self.conversation_id = conversation.conversation_id;
+                self.title = conversation.conversation_title;
+                // 加载聊天记录
+                todo!("加载聊天记录")
+            }
+            event::KeyCode::Up => self.chat_item_list.prev_item(),
+            event::KeyCode::Down => self.chat_item_list.next_item(),
+            event::KeyCode::Delete => {
+                // 弹窗提示
+                todo!("弹窗提示");
+                // self.chat_item_list.delete_item();
+            }
             event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Esc => self.should_exit = true,
             event::KeyCode::F(3) => self.sidebar_show = !self.sidebar_show,
@@ -356,20 +385,20 @@ impl UI {
 
     /// 聊天区域向上滚动
     fn up(&mut self) {
-        self.scroll_props.scroll_offset = self.scroll_props.scroll_offset.saturating_sub(1);
+        self.chat_show.scroll_offset = self.chat_show.scroll_offset.saturating_sub(1);
     }
 
     /// 聊天区域向下滚动
     fn down(&mut self) {
-        self.scroll_props.scroll_offset = self
-            .scroll_props
+        self.chat_show.scroll_offset = self
+            .chat_show
             .scroll_offset
             .saturating_add(1)
             .min(self.max_scroll_offset());
     }
 
     fn max_scroll_offset(&self) -> u16 {
-        self.scroll_props.chat_history_area_height - self.scroll_props.last_chat_history_height
+        self.chat_show.chat_history_area_height - self.chat_show.last_chat_history_height
     }
 
     /// 提交消息
@@ -379,7 +408,7 @@ impl UI {
             if self.gemini.is_none() {
                 self.restore_or_new_gemini(Some(self.input_field_component.get_content()));
             } else {
-                self.scroll_props.chat_history.push(ChatMessage {
+                self.chat_show.chat_history.push(ChatMessage {
                     success: true,
                     sender: User(image_path.clone()),
                     message: self.input_field_component.get_content(),
@@ -401,7 +430,7 @@ impl UI {
             }
             self.input_field_component.clear();
             // 滚动到最新的一条消息
-            self.scroll_props.scroll_offset = self.max_scroll_offset();
+            self.chat_show.scroll_offset = self.max_scroll_offset();
         }
     }
 
@@ -515,15 +544,8 @@ impl UI {
             .centered();
         frame.render_widget(new_chat_button_text, new_chat_area);
         // 聊天列表
-        let chat_list_block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(
-            if self.focus_component == MainFocusComponent::ChatItemList {
-                Color::Green
-            } else {
-                Color::White
-            },
-        ));
-        let none_paragraph = Paragraph::new("").block(chat_list_block);
-        frame.render_widget(none_paragraph, list_area);
+        let is_focused = self.focus_component == MainFocusComponent::ChatItemList;
+        self.chat_item_list.draw(frame, list_area, is_focused);
         // 设置按钮
         let setting_button_block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(
             if self.focus_component == MainFocusComponent::SettingButton {
@@ -652,7 +674,7 @@ impl UI {
         F: Fn() -> usize,
     {
         let is_focused = self.focus_component == MainFocusComponent::ChatShow;
-        self.scroll_props.draw(frame, chat_area, chat_area_width, is_focused);
+        self.chat_show.draw(frame, chat_area, chat_area_width, is_focused);
     }
 
     /// 判断图片路径是否为空
