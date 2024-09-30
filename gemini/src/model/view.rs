@@ -1,5 +1,4 @@
 use chrono::{DateTime, Local};
-use rusqlite::types::FromSql;
 
 /// 单条聊天消息
 ///
@@ -25,19 +24,4 @@ pub enum Sender {
     Bot,
     /// 用于换行的标记消息
     Split,
-}
-
-impl FromSql for Sender {
-    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
-        if let Ok(sender) = value.as_str() {
-            match sender {
-                "User" => Ok(Sender::User(String::from(""))),
-                "Bot" => Ok(Sender::Bot),
-                "Split" => Ok(Sender::Split),
-                _ => Err(rusqlite::types::FromSqlError::InvalidType),
-            }
-        } else {
-            Err(rusqlite::types::FromSqlError::InvalidType)
-        }
-    }
 }

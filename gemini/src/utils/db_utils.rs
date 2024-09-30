@@ -1,20 +1,19 @@
-#![allow(unused)]
+#![allow(dead_code)]
 use std::{
     borrow::{Borrow, BorrowMut},
-    cell::RefCell,
     env,
-    rc::Rc,
 };
 
+use gemini_api::utils::image::get_image_type_and_base64_string;
 use nanoid::nanoid;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use rusqlite::Connection;
 use std::cell::LazyCell;
 
 use crate::model::{
     db::{Conversation, ImageRecord, MessageRecord},
-    view::ChatMessage,
+    view::{ChatMessage, Sender},
 };
 
 /// 数据库连接
@@ -36,7 +35,7 @@ pub fn create_table() -> Result<()> {
 
 /// 查询所有会话
 pub fn query_all() -> Result<Vec<Conversation>> {
-    let mut binding = DB_CONNECTION;
+    let binding = DB_CONNECTION;
     let conn = binding.borrow();
     let mut stmt = conn.prepare(
         r#"SELECT conversation_id, conversation_title, conversation_start_time, conversation_modify_time
@@ -60,7 +59,7 @@ pub fn query_all() -> Result<Vec<Conversation>> {
 
 /// 根据会话ID查询会话详情
 pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
-    let mut binding = DB_CONNECTION;
+    let binding = DB_CONNECTION;
     let conn = binding.borrow();
     let mut stmt = conn.prepare(
         r#"SELECT
@@ -76,6 +75,7 @@ pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
         let image_record = if let Some(image_record_id) = image_record_id.clone() {
             Some(ImageRecord {
                 image_record_id,
+                record_id: row.get(0)?,
                 image_path: row.get(6)?,
                 image_type: row.get(7)?,
                 image_base64: row.get(8)?,
@@ -83,12 +83,18 @@ pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
         } else {
             None
         };
+        let sender_str: String = row.get(3)?;
+        let record_sender = match sender_str.as_str() {
+            "User" => Sender::User(row.get(6)?),
+            "Bot" => Sender::Bot,
+            _ => Sender::Split,
+        };
         Ok(MessageRecord {
             conversation_id: conversation.conversation_id.clone(),
             record_id: row.get(0)?,
             record_content: row.get(1)?,
             record_time: row.get(2)?,
-            record_sender: row.get(3)?,
+            record_sender,
             sort_index: row.get(4)?,
             image_record,
         })
@@ -107,7 +113,7 @@ pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
 
 /// 根据对话 ID 删除一个对话
 pub fn delete_one(conversation_id: String) -> Result<()> {
-    let mut binding = DB_CONNECTION;
+    let binding = DB_CONNECTION;
     let conn = binding.borrow();
     let sql = format!(
         r#"
@@ -117,18 +123,100 @@ pub fn delete_one(conversation_id: String) -> Result<()> {
     "#,
         conversation_id
     );
-    conn.execute_batch(sql.as_str());
+    conn.execute_batch(sql.as_str())?;
     Ok(())
 }
 
 /// 保存对话
-pub fn save_conversation() -> Result<()> {
-    todo!()
-}
+pub fn save_conversation(conversation_id: String, conversation_title: String, message: ChatMessage) -> Result<()> {
+    let binding = DB_CONNECTION;
+    let conn = binding.borrow();
+    // 查询是否存在此会话
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT conversation_id FROM gemini_conversation WHERE conversation_id = ?1
+        "#,
+    )?;
+    let exists = stmt
+        .query_row([conversation_id.clone()], |row| {
+            let conversation_id: String = row.get(0)?;
+            Ok(!conversation_id.is_empty())
+        })
+        .unwrap_or_default();
 
-/// 插入一条消息到当前对话
-pub fn insert_one_into(chat_message: ChatMessage, conversation_id: i32) {
-    todo!()
+    if !exists {
+        // 如果不存在，则新增一个会话
+        let date_time = message.date_time;
+        let _ = conn.execute(r#"
+        INSERT INTO gemini_conversation (conversation_id, conversation_title, conversation_start_time, conversation_modify_time)
+        VALUES (?1, ?2, ?3, ?4)
+        "#, [conversation_id.clone(), conversation_title.clone(), date_time.clone().to_string(), date_time.to_string()])?;
+    } else {
+        // 如果存在，则更新会话修改时间
+        let date_time = message.date_time;
+        let _ = conn.execute(
+            r#"
+        UPDATE FROM gemini_conversation SET conversation_modify_time = ?1
+        WHERE conversation_id = ?2
+        "#,
+            [date_time.to_string(), conversation_id.clone()],
+        );
+    }
+
+    // 获取当前会话 ID 的最新消息序号 + 1
+    let mut stmt = conn.prepare(
+        r#"
+    SELECT MAX(sort_index) FROM gemini_message_record WHERE conversation_id = ?1
+    "#,
+    )?;
+    let sort_index = stmt
+        .query_row([conversation_id.clone()], |row| {
+            let sort_index: i32 = row.get(0)?;
+            Ok(sort_index + 1)
+        })
+        .map_or(0, |index| index + 1);
+
+    // 新增一条消息到对应会话
+    match message.sender {
+        crate::model::view::Sender::User(image_url) => {
+            let record_id = generate_unique_id();
+            let conversation_id = conversation_id.clone();
+            let record_content = message.message.clone();
+            let record_time = message.date_time;
+            let record_sender = "User".to_string();
+            conn.execute(r#"
+                INSERT INTO gemini_message_record (record_id, conversation_id, record_content, record_time, record_sender, sort_index)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#, [record_id.clone(), conversation_id, record_content.to_string(), record_time.to_string(), record_sender, sort_index.to_string()])?;
+            // 如果图片路径不为空，则插入图片记录
+            if !image_url.is_empty() {
+                let image_record_id = generate_unique_id();
+                let image_path = image_url.clone();
+                let (image_type, image_base64) = get_image_type_and_base64_string(image_path.clone()).unwrap();
+                conn.execute(
+                    r#"
+                    INSERT INTO gemini_image_record (image_record_id, record_id, image_path, image_type, image_base64)
+                    VALUES (?1, ?2, ?3, ?4, ?5)
+                "#,
+                    [image_record_id, record_id, image_path, image_type, image_base64],
+                )?;
+            }
+        }
+        crate::model::view::Sender::Bot => {
+            let record_id = generate_unique_id();
+            let conversation_id = conversation_id.clone();
+            let record_content = message.message.clone();
+            let record_time = message.date_time;
+            let record_sender = "Bot".to_string();
+            conn.execute(r#"
+            INSERT INTO gemini_message_record (record_id, conversation_id, record_content, record_time, record_sender, sort_index)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "#, [record_id, conversation_id, record_content.to_string(), record_time.to_string(), record_sender, sort_index.to_string()])?;
+        }
+        crate::model::view::Sender::Split => {}
+    }
+
+    Ok(())
 }
 
 /// 生成唯一 ID

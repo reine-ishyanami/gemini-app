@@ -40,6 +40,8 @@ pub struct MessageRecord {
 pub struct ImageRecord {
     /// 图片记录 id
     pub image_record_id: String,
+    /// 对应的 record id
+    pub record_id: String,
     /// 图片路径
     pub image_path: String,
     /// 图片类型
