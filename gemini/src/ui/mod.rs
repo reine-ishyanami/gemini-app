@@ -33,9 +33,9 @@ use ratatui::{
 use setting::SettingUI;
 
 use crate::model::view::ChatMessage;
-use crate::model::view::Sender::{Bot, Split, User};
+use crate::model::view::Sender::{Bot, Never, User};
 use crate::utils::db_utils::{create_table, generate_unique_id, save_conversation};
-use crate::utils::store_utils::{read_config, save_config, StoreData};
+use crate::utils::store_utils::{read_config, read_text_from_file, save_config, StoreData};
 
 /// 窗口UI
 #[derive(Default)]
@@ -134,393 +134,8 @@ impl UI {
         Ok(())
     }
 
-    /// 处理按键事件
-    fn handle_key(&mut self, tx: mpsc::Sender<ChatType>, rx: &mpsc::Receiver<ChatType>) {
-        if self.chat_show.add_a_blank_line {
-            self.chat_show.add_a_blank_line = false;
-            self.chat_show.chat_history.push(ChatMessage {
-                success: true,
-                sender: Split,
-                message: String::new(),
-                date_time: Local::now(),
-            });
-        }
-        // 如果接收消息位为真
-        if self.receiving_message {
-            // 阻塞接收消息
-            if let Ok(request) = rx.recv() {
-                match request {
-                    ChatType::Simple { message } => {
-                        match self.gemini.as_mut().unwrap().chat_conversation(message) {
-                            // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
-                            Ok(response) => {
-                                if self.conversation_id.is_empty() {
-                                    // 总结标题
-                                    let title = self.summary_by_gemini(response.clone());
-                                    self.title = title;
-                                    self.conversation_id = generate_unique_id();
-                                }
-                                // 推送用户发送的消息保存到数据库
-                                let chat_message = self.chat_show.chat_history.pop().unwrap();
-                                let _ = save_conversation(
-                                    self.conversation_id.clone(),
-                                    self.title.clone(),
-                                    chat_message.clone(),
-                                );
-                                self.chat_show.chat_history.push(chat_message);
-                                let response = response.replace("\n\n", "\n");
-                                let response = if response.ends_with("\n") {
-                                    response[..response.len() - 1].to_owned()
-                                } else {
-                                    response
-                                };
-                                let chat_message = ChatMessage {
-                                    success: true,
-                                    sender: Bot,
-                                    message: response,
-                                    date_time: Local::now(),
-                                };
-                                // 推送接收到的消息保存到数据库
-                                let _ = save_conversation(
-                                    self.conversation_id.clone(),
-                                    self.title.clone(),
-                                    chat_message.clone(),
-                                );
-                                self.chat_show.chat_history.push(chat_message);
-                                self.chat_show.add_a_blank_line = true;
-                            }
-                            // 接收响应消息失败，将响应状态位改为失败，并提供错误信息
-                            Err(e) => {
-                                if let Some(msg) = e.downcast_ref::<String>() {
-                                    self.response_status = ResponseStatus::Failed(msg.clone());
-                                } else {
-                                    self.response_status = ResponseStatus::Failed("Unknown Error".into());
-                                }
-                                // 将最后一条消息状态修改为失败
-                                let mut chat_message = self.chat_show.chat_history.pop().unwrap();
-                                chat_message.success = false;
-                                self.chat_show.chat_history.push(chat_message);
-                            }
-                        }
-                    }
-                    ChatType::Image { message, image_path } => {
-                        match self
-                            .gemini
-                            .as_mut()
-                            .unwrap()
-                            .image_analysis_conversation(image_path, message)
-                        {
-                            // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
-                            Ok(response) => {
-                                if self.conversation_id.is_empty() {
-                                    // 总结标题
-                                    let title = self.summary_by_gemini(response.clone());
-                                    self.title = title;
-                                    self.conversation_id = generate_unique_id();
-                                }
-                                // 推送用户发送的消息保存到数据库
-                                let chat_message = self.chat_show.chat_history.pop().unwrap();
-                                let _ = save_conversation(
-                                    self.conversation_id.clone(),
-                                    self.title.clone(),
-                                    chat_message.clone(),
-                                );
-                                self.chat_show.chat_history.push(chat_message);
-                                let response = response.replace("\n\n", "\n");
-                                let response = if response.ends_with("\n") {
-                                    response[..response.len() - 1].to_owned()
-                                } else {
-                                    response
-                                };
-                                let chat_message = ChatMessage {
-                                    success: true,
-                                    sender: Bot,
-                                    message: response,
-                                    date_time: Local::now(),
-                                };
-                                // 推送接收到的消息保存到数据库
-                                let _ = save_conversation(
-                                    self.conversation_id.clone(),
-                                    self.title.clone(),
-                                    chat_message.clone(),
-                                );
-                                self.chat_show.chat_history.push(chat_message);
-                                self.chat_show.add_a_blank_line = true;
-                            }
-                            // 接收响应消息失败，将响应状态位改为失败，并提供错误信息
-                            Err(e) => {
-                                if let Some(msg) = e.downcast_ref::<String>() {
-                                    self.response_status = ResponseStatus::Failed(msg.clone());
-                                } else {
-                                    self.response_status = ResponseStatus::Failed("Unknown Error".into());
-                                }
-                                // 将最后一条消息状态修改为失败
-                                let mut chat_message = self.chat_show.chat_history.pop().unwrap();
-                                chat_message.success = false;
-                                self.chat_show.chat_history.push(chat_message);
-                            }
-                        }
-                    }
-                }
-                self.receiving_message = false;
-            }
-            return;
-        }
-
-        // 接收键盘事件
-        if let Ok(Event::Key(key)) = event::read() {
-            if key.kind != KeyEventKind::Press {
-                return;
-            }
-            match self.focus_component {
-                // 当聚焦于输入框时，处理输入
-                MainFocusComponent::InputField => self.handle_input_key_event(key, tx),
-                // 当聚焦于新建聊天按钮时，处理输入
-                MainFocusComponent::NewChatButton => self.handle_new_chat_key_event(key),
-                // 当聚焦于聊天列表时，处理输入
-                MainFocusComponent::ChatItemList => self.handle_chat_list_key_event(key),
-                // 当聚焦于设置按钮时，处理输入
-                MainFocusComponent::SettingButton => self.handle_setting_button_key_event(key),
-                // 当聚焦于聊天内容显示区域时，处理输入
-                MainFocusComponent::ChatShow => self.handle_chat_show_key_event(key),
-            }
-        }
-    }
-
-    /// 切换到下一个组件
-    fn next_component(&mut self) {
-        if self.sidebar_show {
-            let current = self.focus_component.clone() as i32;
-            let next = (current + 1) % 5;
-            self.focus_component = next.try_into().unwrap();
-        } else {
-            self.focus_component = match self.focus_component {
-                MainFocusComponent::InputField => MainFocusComponent::ChatShow,
-                MainFocusComponent::ChatShow => MainFocusComponent::InputField,
-                _ => MainFocusComponent::InputField,
-            }
-        }
-    }
-
-    /// 当聚焦于输入框时，处理输入
-    fn handle_input_key_event(&mut self, key: event::KeyEvent, tx: mpsc::Sender<ChatType>) {
-        // 如果是除 Tab 键外其他任意按键事件，则清空错误提示消息
-        if key.code != event::KeyCode::Tab && self.response_status != ResponseStatus::None {
-            self.response_status = ResponseStatus::None;
-        }
-        match key.code {
-            event::KeyCode::Backspace => self.input_field_component.delete_pre_char(),
-            event::KeyCode::Enter => self.submit_message(tx),
-            event::KeyCode::Left => self
-                .input_field_component
-                .move_cursor_left(self.input_field_component.get_current_char()),
-            event::KeyCode::Right => self
-                .input_field_component
-                .move_cursor_right(self.input_field_component.get_next_char()),
-            event::KeyCode::Home => self.input_field_component.home_of_cursor(),
-            event::KeyCode::End => self.input_field_component.end_of_cursor(),
-            event::KeyCode::Delete => self.input_field_component.delete_suf_char(),
-            event::KeyCode::Char(x) => self.input_field_component.enter_char(x),
-            event::KeyCode::F(4) => self.set_or_clear_image_path(),
-            event::KeyCode::F(3) => self.sidebar_show = !self.sidebar_show,
-            event::KeyCode::Tab => self.next_component(),
-            event::KeyCode::Esc => self.should_exit = true,
-            _ => {}
-        };
-    }
-
-    /// 当聚焦于新建聊天按钮时，处理输入
-    fn handle_new_chat_key_event(&mut self, key: event::KeyEvent) {
-        match key.code {
-            event::KeyCode::Enter => {
-                self.receiving_message = false;
-                self.response_status = ResponseStatus::None;
-                if let Some(gemini) = self.gemini.clone() {
-                    let mut gemini_new = Gemini::rebuild(gemini.key, gemini.model, Vec::new(), gemini.options);
-                    gemini_new.set_system_instruction(gemini.system_instruction.unwrap_or("".into()));
-                    self.gemini = Some(gemini_new);
-                };
-                self.focus_component = MainFocusComponent::InputField;
-                self.input_field_component.clear();
-                self.image_path = None;
-                self.title = "".into();
-                self.conversation_id = "".into();
-                self.chat_show = ChatShowScrollProps::default();
-            }
-            event::KeyCode::Tab => self.next_component(),
-            event::KeyCode::Esc => self.should_exit = true,
-            event::KeyCode::F(3) => self.sidebar_show = !self.sidebar_show,
-            _ => {}
-        };
-    }
-
-    /// 当聚焦于聊天列表时，处理输入
-    fn handle_chat_list_key_event(&mut self, key: event::KeyEvent) {
-        match key.code {
-            event::KeyCode::Enter => {
-                // 如果此时有确认删除的弹窗，则处理弹窗
-                if let Some(popup) = self.chat_item_list.popup_delete_confirm_dialog.clone() {
-                    let confirm = popup.press();
-                    // 如果确认删除，则删除
-                    if confirm {
-                        self.chat_item_list.delete_item();
-                    }
-                    self.chat_item_list.popup_delete_confirm_dialog = None;
-                    return;
-                }
-                // 否则加载对应选中项的聊天内容列表
-                if let Some(conversation) = self.chat_item_list.rebuild() {
-                    self.conversation_id = conversation.conversation_id;
-                    self.title = conversation.conversation_title;
-                    let contents: Vec<Content> = conversation
-                        .conversation_records
-                        .clone()
-                        .iter()
-                        .map(|record| {
-                            let role = match record.record_sender {
-                                User(_) => Some(Role::User),
-                                Bot => Some(Role::Model),
-                                Split => None,
-                            };
-                            let mut parts = Vec::new();
-                            parts.push(Part::Text(record.record_content.clone()));
-                            // 如果包含了图片数据，则添加到 parts 中
-                            if let Some(image_record) = record.image_record.clone() {
-                                parts.push(Part::InlineData {
-                                    mime_type: image_record.image_type,
-                                    data: image_record.image_base64,
-                                });
-                            }
-                            Content { parts, role }
-                        })
-                        .collect();
-                    // 重新加载 gemini 客户端
-                    if let Some(gemini) = self.gemini.clone() {
-                        let mut gemini_new = Gemini::rebuild(gemini.key, gemini.model, contents, gemini.options);
-                        gemini_new.set_system_instruction(gemini.system_instruction.unwrap_or("".into()));
-                        self.gemini = Some(gemini_new);
-                    }
-                    // 加载聊天记录
-                    let mut chat_history: Vec<ChatMessage> = conversation
-                        .conversation_records
-                        .clone()
-                        .iter()
-                        .map(|record| ChatMessage {
-                            success: true,
-                            message: record.record_content.clone(),
-                            sender: record.record_sender.clone(),
-                            date_time: record.record_time,
-                        })
-                        .collect();
-                    chat_history.push(ChatMessage {
-                        success: true,
-                        message: " ".into(),
-                        sender: Split,
-                        date_time: Local::now(),
-                    });
-                    self.chat_show.chat_history = chat_history;
-                    self.focus_component = MainFocusComponent::InputField;
-                    self.input_field_component.clear();
-                    self.image_path = None;
-                }
-            }
-            event::KeyCode::Up => self.chat_item_list.prev_item(),
-            event::KeyCode::Down => self.chat_item_list.next_item(),
-            event::KeyCode::Delete => {
-                // 弹窗提示
-                self.chat_item_list.popup_delete_confirm_dialog = Some(DeletePopup::default());
-            }
-            event::KeyCode::Tab => {
-                // 如果此时有确认删除的弹窗，则处理弹窗
-                if let Some(ref mut popup) = self.chat_item_list.popup_delete_confirm_dialog {
-                    popup.next_button();
-                } else {
-                    self.next_component();
-                }
-            }
-            event::KeyCode::Esc => self.should_exit = true,
-            event::KeyCode::F(3) => self.sidebar_show = !self.sidebar_show,
-            _ => {}
-        };
-    }
-
-    /// 当聚焦于退出按钮时，处理进入设置菜单
-    fn handle_setting_button_key_event(&mut self, key: event::KeyEvent) {
-        match key.code {
-            event::KeyCode::Enter => self.open_setting_menu(),
-            event::KeyCode::Tab => self.next_component(),
-            event::KeyCode::Esc => self.should_exit = true,
-            event::KeyCode::F(3) => self.sidebar_show = !self.sidebar_show,
-            _ => {}
-        };
-    }
-
-    /// 当聚焦于聊天内容显示区域时，处理输入
-    fn handle_chat_show_key_event(&mut self, key: event::KeyEvent) {
-        match key.code {
-            event::KeyCode::Up => self.up(),
-            event::KeyCode::Down => self.down(),
-            event::KeyCode::Tab => self.next_component(),
-            event::KeyCode::Esc => self.should_exit = true,
-            event::KeyCode::F(3) => self.sidebar_show = !self.sidebar_show,
-            _ => {}
-        }
-    }
-
-    /// 进入设置菜单
-    fn open_setting_menu(&mut self) {
-        self.current_windows = CurrentWindows::SettingWindow(SettingUI::new());
-    }
-
-    /// 聊天区域向上滚动
-    fn up(&mut self) {
-        self.chat_show.scroll_offset = self.chat_show.scroll_offset.saturating_sub(1);
-    }
-
-    /// 聊天区域向下滚动
-    fn down(&mut self) {
-        self.chat_show.scroll_offset = self
-            .chat_show
-            .scroll_offset
-            .saturating_add(1)
-            .min(self.max_scroll_offset());
-    }
-
     fn max_scroll_offset(&self) -> u16 {
-        self.chat_show.chat_history_area_height - self.chat_show.last_chat_history_height
-    }
-
-    /// 提交消息
-    fn submit_message(&mut self, tx: mpsc::Sender<ChatType>) {
-        let image_path = self.image_path.clone().unwrap_or_default();
-        if !self.input_field_component.get_content().is_empty() {
-            if self.gemini.is_none() {
-                self.restore_or_new_gemini(Some(self.input_field_component.get_content()));
-            } else {
-                self.chat_show.chat_history.push(ChatMessage {
-                    success: true,
-                    sender: User(image_path.clone()),
-                    message: self.input_field_component.get_content(),
-                    date_time: Local::now(),
-                });
-                // 将获取消息标志位置真，发送消息给下一次循环使用
-                self.receiving_message = true;
-                if image_path.is_empty() {
-                    let _ = tx.send(ChatType::Simple {
-                        message: self.input_field_component.get_content(),
-                    });
-                } else {
-                    let _ = tx.send(ChatType::Image {
-                        message: self.input_field_component.get_content(),
-                        image_path,
-                    });
-                    self.image_path = None;
-                }
-            }
-            self.input_field_component.clear();
-            // 滚动到最新的一条消息
-            self.chat_show.scroll_offset = self.max_scroll_offset();
-        }
+        self.chat_show.chat_history_area_height
     }
 
     /// 尝试通过读取环境变量信息初始化 Gemini API
@@ -597,6 +212,18 @@ impl UI {
         pure_gemini.chat_once(message).unwrap_or_default()
     }
 
+    /// 判断图片路径是否为空
+    fn blank_image(&self) -> bool {
+        if let Some(image_path) = self.image_path.clone() {
+            image_path.is_empty()
+        } else {
+            true
+        }
+    }
+}
+
+/// 渲染 UI
+impl UI {
     /// 绘制UI
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
@@ -773,13 +400,400 @@ impl UI {
         let is_focused = self.focus_component == MainFocusComponent::ChatShow;
         self.chat_show.draw(frame, chat_area, chat_area_width, is_focused);
     }
+}
 
-    /// 判断图片路径是否为空
-    fn blank_image(&self) -> bool {
-        if let Some(image_path) = self.image_path.clone() {
-            image_path.is_empty()
+/// 处理输入事件
+impl UI {
+    /// 处理按键事件
+    fn handle_key(&mut self, tx: mpsc::Sender<ChatType>, rx: &mpsc::Receiver<ChatType>) {
+        // 如果接收消息位为真
+        if self.receiving_message {
+            // 阻塞接收消息
+            if let Ok(request) = rx.recv() {
+                match request {
+                    ChatType::Simple { message } => {
+                        match self.gemini.as_mut().unwrap().chat_conversation(message) {
+                            // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
+                            Ok(response) => {
+                                if self.conversation_id.is_empty() {
+                                    // 总结标题
+                                    let title = self.summary_by_gemini(response.clone());
+                                    self.title = title;
+                                    self.conversation_id = generate_unique_id();
+                                }
+                                // 推送用户发送的消息保存到数据库
+                                let chat_message = self.chat_show.chat_history.pop().unwrap();
+                                let _ = save_conversation(
+                                    self.conversation_id.clone(),
+                                    self.title.clone(),
+                                    chat_message.clone(),
+                                );
+                                self.chat_show.chat_history.push(chat_message);
+                                let response = response.replace("\n\n", "\n");
+                                let response = if response.ends_with("\n") {
+                                    response[..response.len() - 1].to_owned()
+                                } else {
+                                    response
+                                };
+                                let chat_message = ChatMessage {
+                                    success: true,
+                                    sender: Bot,
+                                    message: response,
+                                    date_time: Local::now(),
+                                };
+                                // 推送接收到的消息保存到数据库
+                                let _ = save_conversation(
+                                    self.conversation_id.clone(),
+                                    self.title.clone(),
+                                    chat_message.clone(),
+                                );
+                                self.chat_show.chat_history.push(chat_message);
+                            }
+                            // 接收响应消息失败，将响应状态位改为失败，并提供错误信息
+                            Err(e) => {
+                                if let Some(msg) = e.downcast_ref::<String>() {
+                                    self.response_status = ResponseStatus::Failed(msg.clone());
+                                } else {
+                                    self.response_status = ResponseStatus::Failed("Unknown Error".into());
+                                }
+                                // 将最后一条消息状态修改为失败
+                                let mut chat_message = self.chat_show.chat_history.pop().unwrap();
+                                chat_message.success = false;
+                                self.chat_show.chat_history.push(chat_message);
+                            }
+                        }
+                    }
+                    ChatType::Image { message, image_path } => {
+                        match self
+                            .gemini
+                            .as_mut()
+                            .unwrap()
+                            .image_analysis_conversation(image_path, message)
+                        {
+                            // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
+                            Ok(response) => {
+                                if self.conversation_id.is_empty() {
+                                    // 总结标题
+                                    let title = self.summary_by_gemini(response.clone());
+                                    self.title = title;
+                                    self.conversation_id = generate_unique_id();
+                                }
+                                // 推送用户发送的消息保存到数据库
+                                let chat_message = self.chat_show.chat_history.pop().unwrap();
+                                let _ = save_conversation(
+                                    self.conversation_id.clone(),
+                                    self.title.clone(),
+                                    chat_message.clone(),
+                                );
+                                self.chat_show.chat_history.push(chat_message);
+                                let response = response.replace("\n\n", "\n");
+                                let response = if response.ends_with("\n") {
+                                    response[..response.len() - 1].to_owned()
+                                } else {
+                                    response
+                                };
+                                let chat_message = ChatMessage {
+                                    success: true,
+                                    sender: Bot,
+                                    message: response,
+                                    date_time: Local::now(),
+                                };
+                                // 推送接收到的消息保存到数据库
+                                let _ = save_conversation(
+                                    self.conversation_id.clone(),
+                                    self.title.clone(),
+                                    chat_message.clone(),
+                                );
+                                self.chat_show.chat_history.push(chat_message);
+                            }
+                            // 接收响应消息失败，将响应状态位改为失败，并提供错误信息
+                            Err(e) => {
+                                if let Some(msg) = e.downcast_ref::<String>() {
+                                    self.response_status = ResponseStatus::Failed(msg.clone());
+                                } else {
+                                    self.response_status = ResponseStatus::Failed("Unknown Error".into());
+                                }
+                                // 将最后一条消息状态修改为失败
+                                let mut chat_message = self.chat_show.chat_history.pop().unwrap();
+                                chat_message.success = false;
+                                self.chat_show.chat_history.push(chat_message);
+                            }
+                        }
+                    }
+                }
+                self.receiving_message = false;
+            }
+            return;
+        }
+
+        // 接收键盘事件
+        if let Ok(Event::Key(key)) = event::read() {
+            if key.kind != KeyEventKind::Press {
+                return;
+            }
+            match self.focus_component {
+                // 当聚焦于输入框时，处理输入
+                MainFocusComponent::InputField => self.handle_input_key_event(key, tx),
+                // 当聚焦于新建聊天按钮时，处理输入
+                MainFocusComponent::NewChatButton => self.handle_new_chat_key_event(key),
+                // 当聚焦于聊天列表时，处理输入
+                MainFocusComponent::ChatItemList => self.handle_chat_list_key_event(key),
+                // 当聚焦于设置按钮时，处理输入
+                MainFocusComponent::SettingButton => self.handle_setting_button_key_event(key),
+                // 当聚焦于聊天内容显示区域时，处理输入
+                MainFocusComponent::ChatShow => self.handle_chat_show_key_event(key),
+            }
+        }
+    }
+
+    /// 当聚焦于输入框时，处理输入
+    fn handle_input_key_event(&mut self, key: event::KeyEvent, tx: mpsc::Sender<ChatType>) {
+        // 如果是除 Tab 键外其他任意按键事件，则清空错误提示消息
+        if key.code != event::KeyCode::Tab && self.response_status != ResponseStatus::None {
+            self.response_status = ResponseStatus::None;
+        }
+        match key.code {
+            event::KeyCode::Backspace => self.input_field_component.delete_pre_char(),
+            event::KeyCode::Enter => self.submit_message(tx),
+            event::KeyCode::Left => self
+                .input_field_component
+                .move_cursor_left(self.input_field_component.get_current_char()),
+            event::KeyCode::Right => self
+                .input_field_component
+                .move_cursor_right(self.input_field_component.get_next_char()),
+            event::KeyCode::Home => self.input_field_component.home_of_cursor(),
+            event::KeyCode::End => self.input_field_component.end_of_cursor(),
+            event::KeyCode::Delete => self.input_field_component.delete_suf_char(),
+            event::KeyCode::Char(x) => self.input_field_component.enter_char(x),
+            event::KeyCode::F(4) => self.set_or_clear_image_path(),
+            event::KeyCode::F(3) => self.show_and_hide_sidebar(),
+            event::KeyCode::Tab => self.next_component(),
+            event::KeyCode::Esc => self.should_exit = true,
+            _ => {}
+        };
+    }
+
+    /// 当聚焦于新建聊天按钮时，处理输入
+    fn handle_new_chat_key_event(&mut self, key: event::KeyEvent) {
+        match key.code {
+            event::KeyCode::Enter => self.new_conversation(),
+            event::KeyCode::Tab => self.next_component(),
+            event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::F(3) => self.show_and_hide_sidebar(),
+            _ => {}
+        };
+    }
+
+    /// 创建一个新的对话
+    fn new_conversation(&mut self) {
+        self.receiving_message = false;
+        self.response_status = ResponseStatus::None;
+        if let Some(gemini) = self.gemini.clone() {
+            let mut gemini_new = Gemini::rebuild(gemini.key, gemini.model, Vec::new(), gemini.options);
+            gemini_new.set_system_instruction(gemini.system_instruction.unwrap_or("".into()));
+            self.gemini = Some(gemini_new);
+        };
+        self.focus_component = MainFocusComponent::InputField;
+        self.input_field_component.clear();
+        self.image_path = None;
+        self.title = "".into();
+        self.conversation_id = "".into();
+        self.chat_show = ChatShowScrollProps::default();
+    }
+
+    /// 当聚焦于聊天列表时，处理输入
+    fn handle_chat_list_key_event(&mut self, key: event::KeyEvent) {
+        match key.code {
+            event::KeyCode::Enter => {
+                // 如果此时有确认删除的弹窗，则处理弹窗
+                if let Some(popup) = self.chat_item_list.popup_delete_confirm_dialog.clone() {
+                    let confirm = popup.press();
+                    // 如果确认删除，则删除
+                    if confirm {
+                        let deleted_id = self.chat_item_list.delete_item();
+                        // 如果删除的是当前聊天，则重新创建新的聊天
+                        if deleted_id == self.conversation_id {
+                            self.new_conversation();
+                        }
+                    }
+                    self.chat_item_list.popup_delete_confirm_dialog = None;
+                    return;
+                }
+                // 否则加载对应选中项的聊天内容列表
+                if let Some(conversation) = self.chat_item_list.rebuild() {
+                    self.conversation_id = conversation.conversation_id;
+                    self.title = conversation.conversation_title;
+                    let contents: Vec<Content> = conversation
+                        .conversation_records
+                        .clone()
+                        .iter()
+                        .map(|record| {
+                            let role = match record.record_sender {
+                                User(_) => Some(Role::User),
+                                Bot => Some(Role::Model),
+                                Never => None,
+                            };
+                            let mut parts = Vec::new();
+                            parts.push(Part::Text(record.record_content.clone()));
+                            // 如果包含了图片数据，则添加到 parts 中
+                            if let Some(image_record) = record.image_record.clone() {
+                                let image_record_id = image_record.image_record_id;
+                                // 读取图片base64文本数据
+                                if let Ok(image_data) = read_text_from_file(&image_record_id) {
+                                    parts.push(Part::InlineData {
+                                        mime_type: image_record.image_type,
+                                        data: image_data,
+                                    });
+                                }
+                            }
+                            Content { parts, role }
+                        })
+                        .collect();
+                    // 重新加载 gemini 客户端
+                    if let Some(gemini) = self.gemini.clone() {
+                        let mut gemini_new = Gemini::rebuild(gemini.key, gemini.model, contents, gemini.options);
+                        gemini_new.set_system_instruction(gemini.system_instruction.unwrap_or("".into()));
+                        self.gemini = Some(gemini_new);
+                    }
+                    // 加载聊天记录
+                    let chat_history: Vec<ChatMessage> = conversation
+                        .conversation_records
+                        .clone()
+                        .iter()
+                        .map(|record| ChatMessage {
+                            success: true,
+                            message: record.record_content.clone(),
+                            sender: record.record_sender.clone(),
+                            date_time: record.record_time,
+                        })
+                        .collect();
+                    self.chat_show.chat_history = chat_history;
+                    self.focus_component = MainFocusComponent::InputField;
+                    self.input_field_component.clear();
+                    self.image_path = None;
+                }
+            }
+            event::KeyCode::Up => self.chat_item_list.prev_item(),
+            event::KeyCode::Down => self.chat_item_list.next_item(),
+            event::KeyCode::Delete => {
+                // 弹窗提示
+                self.chat_item_list.popup_delete_confirm_dialog = Some(DeletePopup::default());
+            }
+            event::KeyCode::Tab => {
+                // 如果此时有确认删除的弹窗，则处理弹窗
+                if let Some(ref mut popup) = self.chat_item_list.popup_delete_confirm_dialog {
+                    popup.next_button();
+                } else {
+                    self.next_component();
+                }
+            }
+            event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::F(3) => self.show_and_hide_sidebar(),
+            _ => {}
+        };
+    }
+
+    /// 当聚焦于退出按钮时，处理进入设置菜单
+    fn handle_setting_button_key_event(&mut self, key: event::KeyEvent) {
+        match key.code {
+            event::KeyCode::Enter => self.open_setting_menu(),
+            event::KeyCode::Tab => self.next_component(),
+            event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::F(3) => self.show_and_hide_sidebar(),
+            _ => {}
+        };
+    }
+
+    /// 当聚焦于聊天内容显示区域时，处理输入
+    fn handle_chat_show_key_event(&mut self, key: event::KeyEvent) {
+        match key.code {
+            event::KeyCode::Up => self.up(),
+            event::KeyCode::Down => self.down(),
+            event::KeyCode::Tab => self.next_component(),
+            event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::F(3) => self.show_and_hide_sidebar(),
+            _ => {}
+        }
+    }
+
+    /// 展示或隐藏侧边栏
+    fn show_and_hide_sidebar(&mut self) {
+        // 如果侧边栏已经显示，且当前聚焦组件为侧边栏组件，则聚焦到输入框，否则不变
+        if self.sidebar_show {
+            self.focus_component = match self.focus_component.clone() {
+                MainFocusComponent::ChatItemList
+                | MainFocusComponent::NewChatButton
+                | MainFocusComponent::SettingButton => MainFocusComponent::InputField,
+                other => other,
+            }
+        }
+        self.sidebar_show = !self.sidebar_show;
+    }
+
+    /// 切换到下一个组件
+    fn next_component(&mut self) {
+        if self.sidebar_show {
+            let current = self.focus_component.clone() as i32;
+            let next = (current + 1) % 5;
+            self.focus_component = next.try_into().unwrap();
         } else {
-            true
+            self.focus_component = match self.focus_component {
+                MainFocusComponent::InputField => MainFocusComponent::ChatShow,
+                MainFocusComponent::ChatShow => MainFocusComponent::InputField,
+                _ => MainFocusComponent::InputField,
+            }
+        }
+    }
+
+    /// 进入设置菜单
+    fn open_setting_menu(&mut self) {
+        self.current_windows = CurrentWindows::SettingWindow(SettingUI::new());
+    }
+
+    /// 聊天区域向上滚动
+    fn up(&mut self) {
+        self.chat_show.scroll_offset = self.chat_show.scroll_offset.saturating_sub(1);
+    }
+
+    /// 聊天区域向下滚动
+    fn down(&mut self) {
+        self.chat_show.scroll_offset = self
+            .chat_show
+            .scroll_offset
+            .saturating_add(1)
+            .min(self.max_scroll_offset());
+    }
+
+    /// 提交消息
+    fn submit_message(&mut self, tx: mpsc::Sender<ChatType>) {
+        let image_path = self.image_path.clone().unwrap_or_default();
+        if !self.input_field_component.get_content().is_empty() {
+            if self.gemini.is_none() {
+                self.restore_or_new_gemini(Some(self.input_field_component.get_content()));
+            } else {
+                self.chat_show.chat_history.push(ChatMessage {
+                    success: true,
+                    sender: User(image_path.clone()),
+                    message: self.input_field_component.get_content(),
+                    date_time: Local::now(),
+                });
+                // 将获取消息标志位置真，发送消息给下一次循环使用
+                self.receiving_message = true;
+                if image_path.is_empty() {
+                    let _ = tx.send(ChatType::Simple {
+                        message: self.input_field_component.get_content(),
+                    });
+                } else {
+                    let _ = tx.send(ChatType::Image {
+                        message: self.input_field_component.get_content(),
+                        image_path,
+                    });
+                    self.image_path = None;
+                }
+            }
+            self.input_field_component.clear();
+            // 滚动到最新的一条消息
+            self.chat_show.scroll_offset = self.chat_show.chat_history_area_height;
         }
     }
 }

@@ -16,6 +16,8 @@ use crate::model::{
     view::{ChatMessage, Sender},
 };
 
+use super::store_utils::{delete_text_file, write_text_to_file};
+
 /// 数据库连接
 #[allow(clippy::declare_interior_mutable_const)]
 const DB_CONNECTION: LazyCell<Connection> = LazyCell::new(|| {
@@ -64,7 +66,7 @@ pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
     let mut stmt = conn.prepare(
         r#"SELECT
         gemini_message_record.record_id, record_content, record_time, record_sender, sort_index,
-        image_record_id, image_path, image_type, image_base64
+        image_record_id, image_path, image_type
         FROM gemini_message_record LEFT JOIN gemini_image_record
         ON gemini_message_record.record_id = gemini_image_record.record_id
         WHERE conversation_id = ?1
@@ -78,7 +80,6 @@ pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
                 record_id: row.get(0)?,
                 image_path: row.get(6)?,
                 image_type: row.get(7)?,
-                image_base64: row.get(8)?,
             })
         } else {
             None
@@ -88,7 +89,7 @@ pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
         let record_sender = match sender_str.as_str() {
             "User" => Sender::User(image_path.unwrap_or_default()),
             "Bot" => Sender::Bot,
-            _ => Sender::Split,
+            _ => Sender::Never,
         };
         Ok(MessageRecord {
             conversation_id: conversation.conversation_id.clone(),
@@ -113,16 +114,27 @@ pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
 }
 
 /// 根据对话 ID 删除一个对话
-pub fn delete_one(conversation_id: String) -> Result<()> {
+pub fn delete_one(conversation: Conversation) -> Result<()> {
     let binding = DB_CONNECTION;
     let conn = binding.borrow();
+    // 删除图片记录
+    conversation
+        .conversation_records
+        .iter()
+        .filter(|record| record.image_record.is_some())
+        .map(|record| record.image_record.clone())
+        .for_each(|record| {
+            let image_record_id = record.unwrap().image_record_id;
+            let _ = delete_text_file(&image_record_id);
+        });
+    // 删除表
     let sql = format!(
         r#"
     PRAGMA foreign_keys = ON;
     DELETE FROM gemini_conversation WHERE conversation_id = '{}';
     PRAGMA foreign_keys = OFF;
     "#,
-        conversation_id
+        conversation.conversation_id
     );
     conn.execute_batch(sql.as_str())?;
     Ok(())
@@ -194,12 +206,14 @@ pub fn save_conversation(conversation_id: String, conversation_title: String, me
                 let image_record_id = generate_unique_id();
                 let image_path = image_url.clone();
                 let (image_type, image_base64) = get_image_type_and_base64_string(image_path.clone()).unwrap();
+                // 写入文件
+                let _ = write_text_to_file(&image_record_id, image_base64);
                 conn.execute(
                     r#"
-                    INSERT INTO gemini_image_record (image_record_id, record_id, image_path, image_type, image_base64)
-                    VALUES (?1, ?2, ?3, ?4, ?5)
+                    INSERT INTO gemini_image_record (image_record_id, record_id, image_path, image_type)
+                    VALUES (?1, ?2, ?3, ?4)
                 "#,
-                    [image_record_id, record_id, image_path, image_type, image_base64],
+                    [image_record_id, record_id, image_path, image_type],
                 )?;
             }
         }
@@ -214,7 +228,7 @@ pub fn save_conversation(conversation_id: String, conversation_title: String, me
             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
             "#, [record_id, conversation_id, record_content.to_string(), record_time.to_string(), record_sender, sort_index.to_string()])?;
         }
-        crate::model::view::Sender::Split => {}
+        crate::model::view::Sender::Never => {}
     }
 
     Ok(())

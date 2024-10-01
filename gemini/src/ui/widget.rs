@@ -15,7 +15,7 @@ use ratatui::{
 
 use crate::{model::view::ChatMessage, utils::char_utils::s_length};
 
-use crate::model::view::Sender::{Bot, Split, User};
+use crate::model::view::Sender::{Bot, Never, User};
 
 use super::component::{popup::delete_popup::DeletePopup, scroll::chat_item_list::SelectableConversation};
 
@@ -111,9 +111,7 @@ impl Widget for ChatMessage {
                     .left_aligned();
                 message_paragraph.render(content_area, buf);
             }
-            Split => {
-                Paragraph::new("").render(area, buf);
-            }
+            Never => {}
         }
     }
 }

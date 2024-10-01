@@ -111,17 +111,26 @@ impl ChatItemListScrollProps {
             self.selected_conversation += 1;
         }
     }
+
     /// 选中上一个会话
     pub fn prev_item(&mut self) {
         if self.selected_conversation > 0 {
             self.selected_conversation -= 1;
         }
     }
+
     /// 删除选中的会话
-    pub fn delete_item(&mut self) {
-        if let Some(selected_conversation) = self.chat_history.get(self.selected_conversation) {
-            let _ = delete_one(selected_conversation.conversation.conversation_id.clone());
+    pub fn delete_item(&mut self) -> String {
+        let id = if let Some(selected_conversation) = self.chat_history.get(self.selected_conversation) {
+            let _ = delete_one(selected_conversation.conversation.clone());
+            selected_conversation.conversation.conversation_id.clone()
+        } else {
+            "".into()
+        };
+        if !id.is_empty() {
+            self.prev_item();
         }
+        id
     }
 
     /// 查询所有会话

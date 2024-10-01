@@ -39,10 +39,16 @@ This is a Rust library for interacting with the Gemini API. It provides a simple
 
 9. press F3 to open/close side bar.
 
-## ToDo
+10. press enter to show selected history chat.
 
-- [ ] history chat
+11. press del to delete selected history chat, you should confirm the action, press enter again to confirm or cancel.
+
+## ToDo
 
 - [ ] fix the textfield bug
 
 - [ ] fix the textarea bug
+
+## Done
+
+- [*] history chat

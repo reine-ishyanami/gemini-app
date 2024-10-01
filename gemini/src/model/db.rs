@@ -49,6 +49,4 @@ pub struct ImageRecord {
     pub image_path: String,
     /// 图片类型
     pub image_type: String,
-    /// 图片二进制base64编码
-    pub image_base64: String,
 }

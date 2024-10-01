@@ -30,7 +30,6 @@ CREATE TABLE IF NOT EXISTS "gemini_image_record" (
   "record_id" TEXT,
   "image_path" TEXT,
   "image_type" TEXT,
-  "image_base64" TEXT,
   PRIMARY KEY ("image_record_id"),
   FOREIGN KEY ("record_id") REFERENCES "gemini_message_record" ("record_id") ON DELETE CASCADE ON UPDATE CASCADE
 );

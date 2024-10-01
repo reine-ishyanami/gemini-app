@@ -16,12 +16,12 @@ pub struct ChatMessage {
 }
 
 /// 发送者类型
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Sender {
     /// 用户发送的消息, 第一个元组参数为图片路径
     User(String),
     /// AI 回复的消息
     Bot,
-    /// 用于换行的标记消息
-    Split,
+    /// 处理其他类型的消息，一般不会用到，用作标记作用
+    Never,
 }
