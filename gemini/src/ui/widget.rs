@@ -6,7 +6,7 @@ use ratatui::{
         Constraint::{Fill, Length, Max},
         Flex, Layout,
     },
-    style::{Color, Stylize},
+    style::{Color, Style, Stylize},
     widgets::{
         block::{Position, Title},
         Block, Borders, Paragraph, Widget, Wrap,
@@ -17,7 +17,7 @@ use crate::{model::view::ChatMessage, utils::char_utils::s_length};
 
 use crate::model::view::Sender::{Bot, Split, User};
 
-use super::component::scroll::chat_item_list::SelectableConversation;
+use super::component::{popup::delete_popup::DeletePopup, scroll::chat_item_list::SelectableConversation};
 
 impl Widget for ChatMessage {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
@@ -148,6 +148,45 @@ impl Widget for SelectableConversation {
             )
             .borders(Borders::ALL)
             .border_style(border_color);
+        border_block.render(area, buf);
+    }
+}
+
+impl Widget for DeletePopup {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    where
+        Self: Sized,
+    {
+        let title = self.title;
+        let [_, title_area, split_area, button_area, _] =
+            Layout::vertical([Length(1), Length(1), Length(1), Length(1), Length(1)]).areas(area);
+        // 渲染标题区域
+        let title_paragraph = Paragraph::new(format!(" {} ", title)).centered();
+        title_paragraph.render(title_area, buf);
+        // 渲染分割线
+        let split_block = Block::default().borders(Borders::ALL).border_style(Color::Gray);
+        split_block.render(split_area, buf);
+        // 渲染按钮区域
+        let [_, confirm_area, _, cancel_area, _] =
+            Layout::horizontal([Length(1), Fill(1), Length(1), Fill(1), Length(1)]).areas(button_area);
+        let (confirm_button_style, cancel_button_style) = match self.selected_button {
+            super::component::popup::delete_popup::ButtonType::Confirm => (
+                Style::default().fg(Color::White).bg(Color::Green),
+                Style::default().fg(Color::White),
+            ),
+            super::component::popup::delete_popup::ButtonType::Cancel => (
+                Style::default().fg(Color::White),
+                Style::default().fg(Color::White).bg(Color::Green),
+            ),
+        };
+        // 确认按钮
+        let confirm_button = Paragraph::new("Confirm").style(confirm_button_style).centered();
+        confirm_button.render(confirm_area, buf);
+        // 取消按钮
+        let cancel_button = Paragraph::new("Cancel").style(cancel_button_style).centered();
+        cancel_button.render(cancel_area, buf);
+        // 边框
+        let border_block = Block::default().style(Color::Blue).borders(Borders::ALL);
         border_block.render(area, buf);
     }
 }

@@ -13,7 +13,6 @@ use crate::utils::store_utils::{read_config, save_config, StoreData};
 
 use super::{
     component::input::{input_trait::InputTextComponent, text_area::TextArea},
-    enum_from::InputIdentifier,
     TextField,
 };
 
@@ -40,6 +39,19 @@ pub struct SettingComponent {
     layout: Constraint,
     // 输入框组件
     input_component: Box<dyn InputTextComponent>,
+}
+
+/// 组件标识符枚举
+#[derive(Clone, PartialEq, Eq)]
+pub enum InputIdentifier {
+    Model,
+    Key,
+    SystemInstruction,
+    ResponseMineType,
+    MaxOutputTokens,
+    Temperature,
+    TopP,
+    TopK,
 }
 
 impl SettingUI {

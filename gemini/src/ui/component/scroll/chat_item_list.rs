@@ -11,7 +11,11 @@ use ratatui::{
     Frame,
 };
 
-use crate::{model::db::Conversation, utils::db_utils::query_all};
+use crate::{
+    model::db::Conversation,
+    ui::component::popup::delete_popup::DeletePopup,
+    utils::db_utils::{delete_one, query_all, query_detail_by_id},
+};
 
 /// 滚动条相关属性
 #[derive(Default)]
@@ -28,6 +32,8 @@ pub struct ChatItemListScrollProps {
     pub add_a_blank_line: bool,
     /// 选中的会话
     pub selected_conversation: usize,
+    /// 是否展示确认删除弹窗
+    pub popup_delete_confirm_dialog: Option<DeletePopup>,
 }
 /// 可一被选中的会话
 #[derive(Clone, Debug)]
@@ -90,8 +96,13 @@ impl ChatItemListScrollProps {
     }
 
     /// 重建聊天记录
-    pub fn rebuild(&self) -> Conversation {
-        todo!()
+    pub fn rebuild(&self) -> Option<Conversation> {
+        let selected_conversation = self.chat_history.get(self.selected_conversation)?;
+        if let Ok(conversation) = query_detail_by_id(selected_conversation.conversation.clone()) {
+            Some(conversation)
+        } else {
+            None
+        }
     }
 
     /// 选中下一个会话
@@ -108,7 +119,9 @@ impl ChatItemListScrollProps {
     }
     /// 删除选中的会话
     pub fn delete_item(&mut self) {
-        todo!()
+        if let Some(selected_conversation) = self.chat_history.get(self.selected_conversation) {
+            let _ = delete_one(selected_conversation.conversation.conversation_id.clone());
+        }
     }
 
     /// 查询所有会话

@@ -1,17 +1,4 @@
-use super::MainFocusComponent;
-
-/// 组件标识符枚举
-#[derive(Clone, PartialEq, Eq)]
-pub enum InputIdentifier {
-    Model,
-    Key,
-    SystemInstruction,
-    ResponseMineType,
-    MaxOutputTokens,
-    Temperature,
-    TopP,
-    TopK,
-}
+use super::{component::popup::delete_popup::ButtonType, setting::InputIdentifier, MainFocusComponent};
 
 impl TryFrom<i32> for InputIdentifier {
     type Error = ();
@@ -41,6 +28,18 @@ impl TryFrom<i32> for MainFocusComponent {
             x if x == MainFocusComponent::ChatItemList as i32 => Ok(MainFocusComponent::ChatItemList),
             x if x == MainFocusComponent::SettingButton as i32 => Ok(MainFocusComponent::SettingButton),
             x if x == MainFocusComponent::ChatShow as i32 => Ok(MainFocusComponent::ChatShow),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryFrom<i32> for ButtonType {
+    type Error = ();
+
+    fn try_from(v: i32) -> Result<Self, Self::Error> {
+        match v {
+            x if x == ButtonType::Confirm as i32 => Ok(ButtonType::Confirm),
+            x if x == ButtonType::Cancel as i32 => Ok(ButtonType::Cancel),
             _ => Err(()),
         }
     }

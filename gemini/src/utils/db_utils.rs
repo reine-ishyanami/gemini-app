@@ -4,7 +4,7 @@ use std::{
     env,
 };
 
-use gemini_api::utils::image::get_image_type_and_base64_string;
+use gemini_api::utils::image::blocking::get_image_type_and_base64_string;
 use nanoid::nanoid;
 
 use anyhow::Result;
@@ -63,7 +63,7 @@ pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
     let conn = binding.borrow();
     let mut stmt = conn.prepare(
         r#"SELECT
-        record_id, record_content, record_time, record_sender, sort_index,
+        gemini_message_record.record_id, record_content, record_time, record_sender, sort_index,
         image_record_id, image_path, image_type, image_base64
         FROM gemini_message_record LEFT JOIN gemini_image_record
         ON gemini_message_record.record_id = gemini_image_record.record_id
@@ -84,8 +84,9 @@ pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
             None
         };
         let sender_str: String = row.get(3)?;
+        let image_path: Option<String> = row.get(6)?;
         let record_sender = match sender_str.as_str() {
-            "User" => Sender::User(row.get(6)?),
+            "User" => Sender::User(image_path.unwrap_or_default()),
             "Bot" => Sender::Bot,
             _ => Sender::Split,
         };
@@ -118,7 +119,7 @@ pub fn delete_one(conversation_id: String) -> Result<()> {
     let sql = format!(
         r#"
     PRAGMA foreign_keys = ON;
-    DELETE FROM gemini_conversion WHERE conversation_id = '{}';
+    DELETE FROM gemini_conversation WHERE conversation_id = '{}';
     PRAGMA foreign_keys = OFF;
     "#,
         conversation_id
