@@ -1,0 +1,45 @@
+name: Zigbuild Specify Target
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        required: true
+        type: string
+        description: compile target
+  workflow_call:
+    inputs:
+      target:
+        required: true
+        type: string
+        description: compile target
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ${{ contains( inputs.target, 'linux' ) && 'ubuntu-latest' || ( contains( inputs.target, 'apple' ) && 'macos-latest' || ( contains( inputs.target, 'windows' ) && 'windows-latest' || 'ubuntu-latest' ) ) }}
+            build-tool: ${{ contains( inputs.target, 'windows-msvc' ) && 'build' || 'zigbuild' }}
+            product: ${{ contains( inputs.target, 'windows' ) && 'gemini.exe' || 'gemini' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: install target
+        run: rustup target add ${{ inputs.target }}
+      - uses: goto-bus-stop/setup-zig@v2
+        if: ${{ matrix.build-tool == 'zigbuild' }}
+      - name: Install cargo-zigbuild
+        if: ${{ matrix.build-tool == 'zigbuild' }}
+        run: cargo install cargo-zigbuild
+      - name: cargo compile
+        run: cargo ${{ matrix.build-tool }} --target ${{ inputs.target }} --release
+      - name: show target
+        run: ls -R ./target
+      - name: Upload product as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini
+          path: ./target/${{ inputs.target }}/release/${{ matrix.product }}
