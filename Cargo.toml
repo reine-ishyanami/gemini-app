@@ -3,16 +3,19 @@ members = ["gemini-api", "gemini"]
 resolver = "2"
 
 [workspace.dependencies]
-reqwest = { version = "0.12.5", default-features = false, features = ["rustls-tls"] }  # 网络请求库
-tokio = { version = "1.39.2", features = ["full"] }  # 异步运行时
-tokio-macros = "2.4.0"  # 异步运行时宏
-anyhow = "1.0.86"  # 错误处理库
-serde = { version = "1.0", features = ["derive"] }  # 序列化/反序列化库
-serde_json = "1.0.127"  # 序列化/反序列化库
-ratatui = "0.28.1"  # 终端UI库
-chrono = "0.4.38"  # 时间处理库
-nanoid = "0.4.0"  # 唯一ID生成库
-rusqlite  = {version = "0.32.1", features = ["bundled", "chrono"]}  # 数据库驱动库
+reqwest = { version = "0.12.5", default-features = false, features = [
+    "rustls-tls",
+] } # 网络请求库
+tokio = { version = "1.39.2", features = ["full"] } # 异步运行时
+tokio-macros = "2.4.0" # 异步运行时宏
+anyhow = "1.0.86" # 错误处理库
+serde = { version = "1.0", features = ["derive"] } # 序列化/反序列化库
+serde_json = "1.0.127" # 序列化/反序列化库
+ratatui = "0.28.1" # 终端UI库
+chrono = "0.4.38" # 时间处理库
+nanoid = "0.4.0" # 唯一ID生成库
+rusqlite = { version = "0.32.1", features = ["bundled", "chrono"] } # 数据库驱动库
+image = "0.25.2" # 图像处理库
 
 # Config for 'cargo dist'
 [workspace.metadata.dist]
@@ -23,7 +26,12 @@ ci = "github"
 # The installers to generate for each app
 installers = []
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+]
 
 # The profile that 'cargo dist' will build with
 [profile.dist]

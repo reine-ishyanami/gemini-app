@@ -1,6 +1,6 @@
 use std::{
     env,
-    fs::{create_dir_all, File},
+    fs::File,
     io::{Read, Write},
     path::PathBuf,
 };
@@ -47,34 +47,4 @@ pub(crate) fn read_config() -> Result<StoreData> {
 fn get_config_file() -> Result<PathBuf> {
     let exe_path = env::current_exe()?;
     Ok(exe_path.parent().unwrap().join(CONFIG_FILE_NAME))
-}
-
-/// 写入图片base64文本到文件
-pub fn write_text_to_file(file_name: &str, text: String) -> Result<()> {
-    let exe_path = env::current_exe()?;
-    let file_path = exe_path.parent().unwrap().join("data").join(file_name);
-    create_dir_all(file_path.parent().unwrap())?;
-    let mut file = File::create(file_path)?;
-    file.write_all(text.as_bytes())?;
-    Ok(())
-}
-
-/// 读取图片base64文本文件内容
-pub fn read_text_from_file(file_name: &str) -> Result<String> {
-    let exe_path = env::current_exe()?;
-    let file_path = exe_path.parent().unwrap().join("data").join(file_name);
-    let mut file = File::open(file_path)?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-    Ok(contents)
-}
-
-/// 删除图片base64文本文件
-pub fn delete_text_file(file_name: &str) -> Result<()> {
-    let exe_path = env::current_exe()?;
-    let file_path = exe_path.parent().unwrap().join("data").join(file_name);
-    if file_path.exists() {
-        std::fs::remove_file(file_path)?;
-    }
-    Ok(())
 }

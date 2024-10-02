@@ -3,7 +3,6 @@ use std::{
     env,
 };
 
-use gemini_api::utils::image::blocking::get_image_type_and_base64_string;
 use nanoid::nanoid;
 
 use anyhow::Result;
@@ -15,7 +14,7 @@ use crate::model::{
     view::{ChatMessage, Sender},
 };
 
-use super::store_utils::{delete_text_file, write_text_to_file};
+use super::image_utils::{cache_image, delete_image_cache};
 
 /// 数据库连接
 #[allow(clippy::declare_interior_mutable_const)]
@@ -124,7 +123,7 @@ pub fn delete_one(conversation: Conversation) -> Result<()> {
         .map(|record| record.image_record.clone())
         .for_each(|record| {
             let image_record_id = record.unwrap().image_record_id;
-            let _ = delete_text_file(&image_record_id);
+            let _ = delete_image_cache(image_record_id);
         });
     // 删除表
     let sql = format!(
@@ -204,9 +203,10 @@ pub fn save_conversation(conversation_id: String, conversation_title: String, me
             if !image_url.is_empty() {
                 let image_record_id = generate_unique_id();
                 let image_path = image_url.clone();
-                let (image_type, image_base64) = get_image_type_and_base64_string(image_path.clone()).unwrap();
                 // 写入文件
-                let _ = write_text_to_file(&image_record_id, image_base64);
+                cache_image(image_url, image_record_id.clone())?;
+                // 压缩后的图片格式
+                let image_type = "image/jpeg".into();
                 conn.execute(
                     r#"
                     INSERT INTO gemini_image_record (image_record_id, record_id, image_path, image_type)

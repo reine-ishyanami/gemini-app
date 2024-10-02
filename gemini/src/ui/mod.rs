@@ -15,6 +15,7 @@ use gemini_api::body::request::GenerationConfig;
 use gemini_api::body::{Content, Part, Role};
 use gemini_api::model::blocking::Gemini;
 use gemini_api::param::LanguageModel;
+use gemini_api::utils::image::blocking::get_image_type_and_base64_string;
 use ratatui::layout::Position as CursorPosition;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
@@ -35,7 +36,8 @@ use setting::SettingUI;
 use crate::model::view::ChatMessage;
 use crate::model::view::Sender::{Bot, Never, User};
 use crate::utils::db_utils::{create_table, generate_unique_id, save_conversation};
-use crate::utils::store_utils::{read_config, read_text_from_file, save_config, StoreData};
+use crate::utils::image_utils::{cache_image, read_image_cache};
+use crate::utils::store_utils::{read_config, save_config, StoreData};
 
 /// 窗口UI
 #[derive(Default)]
@@ -655,13 +657,8 @@ impl UI {
                             // 如果包含了图片数据，则添加到 parts 中
                             if let Some(image_record) = record.image_record.clone() {
                                 let image_record_id = image_record.image_record_id;
-                                // 读取图片base64文本数据
-                                if let Ok(image_data) = read_text_from_file(&image_record_id) {
-                                    parts.push(Part::InlineData {
-                                        mime_type: image_record.image_type,
-                                        data: image_data,
-                                    });
-                                }
+                                // 读取图片缓存数据
+                                Self::read_image_data(image_record_id, image_record.image_path, &mut parts);
                             }
                             Content { parts, role }
                         })
@@ -706,6 +703,25 @@ impl UI {
             }
             _ => {}
         };
+    }
+
+    /// 读取图片数据
+    fn read_image_data(image_record_id: String, image_path: String, parts: &mut Vec<Part>) {
+        // 读取图片缓存数据
+        if let Ok((image_type, image_data)) = read_image_cache(image_record_id.clone()) {
+            parts.push(Part::InlineData {
+                mime_type: image_type,
+                data: image_data,
+            });
+            // 如果读不到缓存的数据，则重新加载图片数据
+        } else if let Ok((image_type, image_data)) = get_image_type_and_base64_string(image_path.clone()) {
+            // 将图片数据缓存到本地
+            let _ = cache_image(image_path, image_record_id);
+            parts.push(Part::InlineData {
+                mime_type: image_type,
+                data: image_data,
+            });
+        }
     }
 
     /// 当聚焦于退出按钮时，处理进入设置菜单
