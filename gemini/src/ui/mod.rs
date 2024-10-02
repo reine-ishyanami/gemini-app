@@ -556,6 +556,16 @@ impl UI {
             self.response_status = ResponseStatus::None;
         }
         match key.code {
+            event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::Char('s') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                self.show_and_hide_sidebar()
+            }
+            event::KeyCode::F(3) => self.show_and_hide_sidebar(),
+            event::KeyCode::Tab => self.next_component(),
+            event::KeyCode::Char('i') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                self.set_or_clear_image_path()
+            }
+            event::KeyCode::F(4) => self.set_or_clear_image_path(),
             event::KeyCode::Backspace => self.input_field_component.delete_pre_char(),
             event::KeyCode::Enter => self.submit_message(tx),
             event::KeyCode::Left => self
@@ -568,10 +578,6 @@ impl UI {
             event::KeyCode::End => self.input_field_component.end_of_cursor(),
             event::KeyCode::Delete => self.input_field_component.delete_suf_char(),
             event::KeyCode::Char(x) => self.input_field_component.enter_char(x),
-            event::KeyCode::F(4) => self.set_or_clear_image_path(),
-            event::KeyCode::F(3) => self.show_and_hide_sidebar(),
-            event::KeyCode::Tab => self.next_component(),
-            event::KeyCode::Esc => self.should_exit = true,
             _ => {}
         };
     }
@@ -579,10 +585,13 @@ impl UI {
     /// 当聚焦于新建聊天按钮时，处理输入
     fn handle_new_chat_key_event(&mut self, key: event::KeyEvent) {
         match key.code {
-            event::KeyCode::Enter => self.new_conversation(),
-            event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::Char('s') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                self.show_and_hide_sidebar()
+            }
             event::KeyCode::F(3) => self.show_and_hide_sidebar(),
+            event::KeyCode::Tab => self.next_component(),
+            event::KeyCode::Enter => self.new_conversation(),
             _ => {}
         };
     }
@@ -607,6 +616,11 @@ impl UI {
     /// 当聚焦于聊天列表时，处理输入
     fn handle_chat_list_key_event(&mut self, key: event::KeyEvent) {
         match key.code {
+            event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::Char('s') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                self.show_and_hide_sidebar()
+            }
+            event::KeyCode::F(3) => self.show_and_hide_sidebar(),
             event::KeyCode::Enter => {
                 // 如果此时有确认删除的弹窗，则处理弹窗
                 if let Some(popup) = self.chat_item_list.popup_delete_confirm_dialog.clone() {
@@ -690,8 +704,6 @@ impl UI {
                     self.next_component();
                 }
             }
-            event::KeyCode::Esc => self.should_exit = true,
-            event::KeyCode::F(3) => self.show_and_hide_sidebar(),
             _ => {}
         };
     }
@@ -699,10 +711,13 @@ impl UI {
     /// 当聚焦于退出按钮时，处理进入设置菜单
     fn handle_setting_button_key_event(&mut self, key: event::KeyEvent) {
         match key.code {
-            event::KeyCode::Enter => self.open_setting_menu(),
-            event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::Char('s') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                self.show_and_hide_sidebar()
+            }
             event::KeyCode::F(3) => self.show_and_hide_sidebar(),
+            event::KeyCode::Tab => self.next_component(),
+            event::KeyCode::Enter => self.open_setting_menu(),
             _ => {}
         };
     }
@@ -710,11 +725,14 @@ impl UI {
     /// 当聚焦于聊天内容显示区域时，处理输入
     fn handle_chat_show_key_event(&mut self, key: event::KeyEvent) {
         match key.code {
+            event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::Char('s') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                self.show_and_hide_sidebar()
+            }
+            event::KeyCode::F(3) => self.show_and_hide_sidebar(),
+            event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Up => self.up(),
             event::KeyCode::Down => self.down(),
-            event::KeyCode::Tab => self.next_component(),
-            event::KeyCode::Esc => self.should_exit = true,
-            event::KeyCode::F(3) => self.show_and_hide_sidebar(),
             _ => {}
         }
     }
