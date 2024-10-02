@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use ratatui::{
     buffer::Buffer,
     layout::{
@@ -24,12 +22,8 @@ pub struct ChatItemListScrollProps {
     pub chat_history: Vec<SelectableConversation>,
     /// 滚动条偏移量
     pub scroll_offset: u16,
-    /// 聊天历史记录区域高度
-    pub chat_history_area_height: u16,
-    /// 最后一条记录的高度
-    pub last_chat_history_height: u16,
-    /// 是否需要添加一条空记录
-    pub add_a_blank_line: bool,
+    /// 展示区域的高度
+    pub show_chat_item_area_height: u16,
     /// 选中的会话
     pub selected_conversation: usize,
     /// 是否展示确认删除弹窗
@@ -46,6 +40,9 @@ pub struct SelectableConversation {
     pub focused: bool,
 }
 
+/// 聊天记录每一项高度
+static ITEM_HEIGHT: u16 = 3;
+
 impl ChatItemListScrollProps {
     pub fn draw(&mut self, frame: &mut Frame, area: Rect, is_focused: bool) {
         // 查询所有会话
@@ -55,18 +52,31 @@ impl ChatItemListScrollProps {
             .borders(Borders::ALL)
             .border_style(Style::default().fg(if is_focused { Color::Green } else { Color::White }));
 
-        let heights: Vec<u16> = (0..self.chat_history.len()).map(|_| 3).collect();
+        let heights: Vec<u16> = (0..self.chat_history.len()).map(|_| ITEM_HEIGHT).collect();
 
-        let height_sum: u16 = heights.iter().sum();
+        // 列表总高度
+        let list_height_sum = heights.iter().sum();
         let layouts: Vec<Constraint> = heights.iter().map(|x| Length(*x)).collect();
 
         let item_list_x = area.x;
         let item_list_y = area.y;
         let item_list_width = area.width - 2;
-        let item_list_height = area.height;
+        // 去掉下边框
+        let item_list_height = area.height - 1;
+
+        // 去掉上边框
+        self.show_chat_item_area_height = item_list_height - 1;
+
+        // 聊天区域高度，如果大于聊天记录区域高度，则显示聊天记录区域高度（可能有问题）
+        let height = if item_list_height > list_height_sum {
+            item_list_height
+        } else {
+            // 整个聊天区域的高度
+            list_height_sum
+        };
 
         // 这块区域将不会被实际渲染
-        let item_list_full_area = Rect::new(item_list_x + 1, item_list_y + 1, item_list_width, height_sum);
+        let item_list_full_area = Rect::new(item_list_x + 1, item_list_y + 1, item_list_width, height);
         let mut item_list_full_area_buf = Buffer::empty(item_list_full_area);
 
         let areas = Layout::vertical(layouts).split(item_list_full_area);
@@ -109,6 +119,12 @@ impl ChatItemListScrollProps {
     pub fn next_item(&mut self) {
         if self.selected_conversation < self.chat_history.len() - 1 {
             self.selected_conversation += 1;
+            // 判断是否需要更新滚动条位置
+            let current_height: u16 = (self.selected_conversation as u16 + 1) * ITEM_HEIGHT;
+            // 如果当前高度大于显示区域高度，并且当前高度大于滚动条位置，则滚动条向下滚动3格
+            if current_height > self.show_chat_item_area_height + self.scroll_offset {
+                self.scroll_offset += ITEM_HEIGHT;
+            }
         }
     }
 
@@ -116,6 +132,11 @@ impl ChatItemListScrollProps {
     pub fn prev_item(&mut self) {
         if self.selected_conversation > 0 {
             self.selected_conversation -= 1;
+            // 判断是否需要更新滚动条位置
+            let current_height: u16 = (self.selected_conversation as u16 + 1) * ITEM_HEIGHT;
+            if current_height <= self.scroll_offset {
+                self.scroll_offset -= ITEM_HEIGHT;
+            }
         }
     }
 

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::{
     borrow::{Borrow, BorrowMut},
     env,

@@ -189,7 +189,7 @@ impl UI {
 
     /// 初始化 Gemini API
     fn init_gemini(&mut self, key: String) {
-        let system_instruction = "你是一只猫娘，你每次说话都会在句尾加上喵~ ".to_owned();
+        let system_instruction = String::new();
         let mut gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
         gemini.set_options(GenerationConfig::default());
         gemini.set_system_instruction(system_instruction.clone());
@@ -224,12 +224,15 @@ impl UI {
 
 /// 渲染 UI
 impl UI {
+    /// 侧边栏宽度
+    const SIDEBAR_WIDTH: u16 = 30;
+
     /// 绘制UI
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
         // 左侧宽度
         if self.sidebar_show {
-            let [left_area, right_area] = Layout::horizontal([Length(30), Fill(1)]).areas(area);
+            let [left_area, right_area] = Layout::horizontal([Length(Self::SIDEBAR_WIDTH), Fill(1)]).areas(area);
             self.render_left_area(frame, left_area);
             self.render_right_area(frame, right_area);
         } else {
@@ -668,7 +671,7 @@ impl UI {
                         })
                         .collect();
                     self.chat_show.chat_history = chat_history;
-                    self.focus_component = MainFocusComponent::InputField;
+                    self.focus_component = MainFocusComponent::ChatShow;
                     self.input_field_component.clear();
                     self.image_path = None;
                 }

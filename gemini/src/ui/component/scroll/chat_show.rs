@@ -21,9 +21,9 @@ pub struct ChatShowScrollProps {
     pub scroll_offset: u16,
     /// 聊天历史记录区域高度
     pub chat_history_area_height: u16,
-    /// 最后一条记录的高度
-    pub last_chat_history_height: u16,
 }
+// 顶部底部边框以及时间区域高度
+static TOP_BOTTOM_BORDER_TIME_HEIGHT: u16 = 3;
 
 impl ChatShowScrollProps {
     pub fn draw<F>(&mut self, frame: &mut Frame, area: Rect, chat_area_width: F, is_focused: bool)
@@ -63,14 +63,6 @@ impl ChatShowScrollProps {
                 ChatMessage { message, ..m.clone() }
             })
             .collect();
-        // 保存最后一条记录的高度，用于计算滚动条位置
-        self.last_chat_history_height = items.clone().iter().last().map_or(0, |item| {
-            if item.sender == Never {
-                0
-            } else {
-                item.message.lines().count() + 3
-            }
-        }) as u16;
         // 计算当前聊天记录区域高度
         self.chat_history_area_height = items
             .clone()
@@ -79,7 +71,7 @@ impl ChatShowScrollProps {
                 if item.sender == Never {
                     0
                 } else {
-                    item.message.lines().count() as u16 + 3
+                    item.message.lines().count() as u16 + TOP_BOTTOM_BORDER_TIME_HEIGHT
                 }
             })
             .sum();
@@ -91,7 +83,7 @@ impl ChatShowScrollProps {
                 if let Never = item.sender {
                     Length(0)
                 } else {
-                    Length(item.message.lines().count() as u16 + 3)
+                    Length(item.message.lines().count() as u16 + TOP_BOTTOM_BORDER_TIME_HEIGHT)
                 }
             })
             .collect();

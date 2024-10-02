@@ -1,10 +1,11 @@
 use std::cmp::max;
 
 use ratatui::{
+    buffer::Buffer,
     layout::{
         Alignment,
         Constraint::{Fill, Length, Max},
-        Flex, Layout,
+        Flex, Layout, Rect,
     },
     style::{Color, Style, Stylize},
     widgets::{
@@ -17,10 +18,11 @@ use crate::{model::view::ChatMessage, utils::char_utils::s_length};
 
 use crate::model::view::Sender::{Bot, Never, User};
 
+use super::component::popup::delete_popup::ButtonType::{Cancel, Confirm};
 use super::component::{popup::delete_popup::DeletePopup, scroll::chat_item_list::SelectableConversation};
 
 impl Widget for ChatMessage {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {
@@ -117,7 +119,7 @@ impl Widget for ChatMessage {
 }
 
 impl Widget for SelectableConversation {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {
@@ -133,8 +135,8 @@ impl Widget for SelectableConversation {
             .format(" %m/%d %H:%M ")
             .to_string();
         // 去掉上下两侧边框
-        let [_, title_area, _] = Layout::vertical([Length(1), Length(1), Length(1)]).areas(area);
-        // 标题区域
+        let [_, title_area, _] = Layout::vertical([Length(1), Fill(1), Length(1)]).areas(area);
+        // 标题区域，两侧加上空格，避免文本被边框覆盖
         let title_paragraph = Paragraph::new(format!(" {} ", title));
         title_paragraph.render(title_area, buf);
         // 边框
@@ -151,13 +153,13 @@ impl Widget for SelectableConversation {
 }
 
 impl Widget for DeletePopup {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {
         let title = self.title;
         let [_, title_area, split_area, button_area, _] =
-            Layout::vertical([Length(1), Length(1), Length(1), Length(1), Length(1)]).areas(area);
+            Layout::vertical([Length(1), Fill(1), Length(1), Length(1), Length(1)]).areas(area);
         // 渲染标题区域
         let title_paragraph = Paragraph::new(format!(" {} ", title)).centered();
         title_paragraph.render(title_area, buf);
@@ -168,11 +170,11 @@ impl Widget for DeletePopup {
         let [_, confirm_area, _, cancel_area, _] =
             Layout::horizontal([Length(1), Fill(1), Length(1), Fill(1), Length(1)]).areas(button_area);
         let (confirm_button_style, cancel_button_style) = match self.selected_button {
-            super::component::popup::delete_popup::ButtonType::Confirm => (
+            Confirm => (
                 Style::default().fg(Color::White).bg(Color::Green),
                 Style::default().fg(Color::White),
             ),
-            super::component::popup::delete_popup::ButtonType::Cancel => (
+            Cancel => (
                 Style::default().fg(Color::White),
                 Style::default().fg(Color::White).bg(Color::Green),
             ),
