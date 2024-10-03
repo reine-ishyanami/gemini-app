@@ -31,7 +31,7 @@ This is a Rust library for interacting with the Gemini API. It provides a simple
 
 5. press Tab to switch focus next component.
 
-6. input a image path or url in the `input` textfield and press F4 to store the image for sending the request with the image in next time.
+6. input a image path or url in the `input` textfield and press F4/Ctrl + i to store the image for sending the request with the image in next time.
 
 7. press F4/Ctrl + i to clear the image when setted the image.
 
@@ -42,6 +42,8 @@ This is a Rust library for interacting with the Gemini API. It provides a simple
 10. press Enter to show selected history chat.
 
 11. press Del to delete selected history chat, you should confirm the action, press Tab to switch, press Enter again to confirm or cancel.
+
+12. press F2/Ctrl + s to save the modify of settings.
 
 ## ToDo
 

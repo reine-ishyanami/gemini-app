@@ -1,3 +1,6 @@
+use ratatui::style::Color;
+use strum::{EnumCount, FromRepr};
+
 #[derive(Clone)]
 pub struct DeletePopup {
     // 提示文本
@@ -8,20 +11,26 @@ pub struct DeletePopup {
     pub width: usize,
     // 高度
     pub height: usize,
+    // 边框颜色
+    pub border_color: Color,
+    // 按钮选中的背景色
+    pub button_selected_bg_color: Color,
 }
 
 impl Default for DeletePopup {
     fn default() -> Self {
         Self {
-            title: "确认删除".into(),
+            title: "Confirm Deletion".into(),
             selected_button: Default::default(),
             width: 30,
             height: 5,
+            border_color: Color::Blue,
+            button_selected_bg_color: Color::Green,
         }
     }
 }
 
-#[derive(Default, Clone, PartialEq, Eq)]
+#[derive(Default, Clone, EnumCount, FromRepr)]
 pub enum ButtonType {
     #[default]
     Confirm,
@@ -31,13 +40,13 @@ pub enum ButtonType {
 impl DeletePopup {
     // 下一个按钮
     pub fn next_button(&mut self) {
-        let current = self.selected_button.clone() as i32;
-        let next = (current + 1) % 2;
-        self.selected_button = next.try_into().unwrap();
+        let current = self.selected_button.clone() as usize;
+        let next = (current + 1) % ButtonType::COUNT;
+        self.selected_button = ButtonType::from_repr(next).unwrap();
     }
 
     // 按下按钮，返回是否确认删除
     pub fn press(&self) -> bool {
-        self.selected_button == ButtonType::Confirm
+        matches!(self.selected_button, ButtonType::Confirm)
     }
 }

@@ -1,5 +1,4 @@
 mod component;
-mod enum_from;
 mod setting;
 mod widget;
 
@@ -20,7 +19,7 @@ use ratatui::layout::Position as CursorPosition;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::block::{Position as TitlePosition, Title};
-use ratatui::widgets::{Paragraph, Widget};
+use ratatui::widgets::{Clear, Paragraph, Widget};
 use ratatui::Frame;
 use ratatui::{
     crossterm::event::{self, Event, KeyEventKind},
@@ -32,6 +31,7 @@ use ratatui::{
     DefaultTerminal,
 };
 use setting::SettingUI;
+use strum::{EnumCount, FromRepr};
 
 use crate::model::view::ChatMessage;
 use crate::model::view::Sender::{Bot, Never, User};
@@ -76,7 +76,7 @@ pub enum CurrentWindows {
 }
 
 /// 当前聚焦组件
-#[derive(Default, PartialEq, Eq, Clone)]
+#[derive(Default, Clone, EnumCount, FromRepr)]
 pub enum MainFocusComponent {
     /// 输入框
     #[default]
@@ -245,6 +245,8 @@ impl UI {
             let x = (area.width - popup.width as u16) / 2;
             let y = (area.height - popup.height as u16) / 2;
             let rect = Rect::new(x, y, popup.width as u16, popup.height as u16);
+            // 先清空弹窗区域内容
+            frame.render_widget(Clear, rect);
             let buf = frame.buffer_mut();
             popup.render(rect, buf);
         }
@@ -261,7 +263,7 @@ impl UI {
         frame.render_widget(title_paragraph, title_area);
         // 新建聊天按钮
         let new_chat_button_block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(
-            if self.focus_component == MainFocusComponent::NewChatButton {
+            if matches!(self.focus_component, MainFocusComponent::NewChatButton) {
                 Color::Green
             } else {
                 Color::White
@@ -273,11 +275,11 @@ impl UI {
             .centered();
         frame.render_widget(new_chat_button_text, new_chat_area);
         // 聊天列表
-        let is_focused = self.focus_component == MainFocusComponent::ChatItemList;
+        let is_focused = matches!(self.focus_component, MainFocusComponent::ChatItemList);
         self.chat_item_list.draw(frame, list_area, is_focused);
         // 设置按钮
         let setting_button_block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(
-            if self.focus_component == MainFocusComponent::SettingButton {
+            if matches!(self.focus_component, MainFocusComponent::SettingButton) {
                 Color::Green
             } else {
                 Color::White
@@ -361,7 +363,7 @@ impl UI {
             .title(title)
             .borders(Borders::ALL)
             .border_style(
-                Style::default().fg(if self.focus_component == MainFocusComponent::InputField {
+                Style::default().fg(if matches!(self.focus_component, MainFocusComponent::InputField) {
                     Color::Green
                 } else {
                     Color::White
@@ -388,7 +390,7 @@ impl UI {
         };
 
         frame.render_widget(input_paragraph, input_area);
-        if self.focus_component == MainFocusComponent::InputField {
+        if matches!(self.focus_component, MainFocusComponent::InputField) {
             let (x, y) = self.input_field_component.get_cursor_position();
             frame.set_cursor_position(CursorPosition::new(
                 input_area.x + x as u16 + 1,
@@ -402,7 +404,7 @@ impl UI {
     where
         F: Fn() -> usize,
     {
-        let is_focused = self.focus_component == MainFocusComponent::ChatShow;
+        let is_focused = matches!(self.focus_component, MainFocusComponent::ChatShow);
         self.chat_show.draw(frame, chat_area, chat_area_width, is_focused);
     }
 }
@@ -770,9 +772,9 @@ impl UI {
     /// 切换到下一个组件
     fn next_component(&mut self) {
         if self.sidebar_show {
-            let current = self.focus_component.clone() as i32;
-            let next = (current + 1) % 5;
-            self.focus_component = next.try_into().unwrap();
+            let current = self.focus_component.clone() as usize;
+            let next = (current + 1) % MainFocusComponent::COUNT;
+            self.focus_component = MainFocusComponent::from_repr(next).unwrap();
         } else {
             self.focus_component = match self.focus_component {
                 MainFocusComponent::InputField => MainFocusComponent::ChatShow,

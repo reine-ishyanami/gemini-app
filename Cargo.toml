@@ -16,6 +16,7 @@ chrono = "0.4.38" # 时间处理库
 nanoid = "0.4.0" # 唯一ID生成库
 rusqlite = { version = "0.32.1", features = ["bundled", "chrono"] } # 数据库驱动库
 image = "0.25.2" # 图像处理库
+strum = { version = "0.26", features = ["derive"] }   # 枚举增强库
 
 # Config for 'cargo dist'
 [workspace.metadata.dist]

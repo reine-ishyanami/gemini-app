@@ -8,6 +8,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
+use strum::{EnumCount, FromRepr};
 
 use crate::utils::store_utils::{read_config, save_config, StoreData};
 
@@ -40,9 +41,8 @@ pub struct SettingComponent {
     // 输入框组件
     input_component: Box<dyn InputTextComponent>,
 }
-
 /// 组件标识符枚举
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, EnumCount, FromRepr, PartialEq, Eq)]
 pub enum InputIdentifier {
     Model,
     Key,
@@ -148,6 +148,11 @@ impl SettingUI {
             // 获取当前选中的输入框
             let component = self.get_current_input_field().unwrap();
             match key.code {
+                event::KeyCode::Enter => component.input_component.handle_enter_key(),
+                event::KeyCode::Tab => self.next_input_field(),
+                event::KeyCode::Char('s') if key.modifiers.contains(event::KeyModifiers::CONTROL) => self.save_config(),
+                event::KeyCode::F(2) => self.save_config(),
+                event::KeyCode::Esc => self.should_exit = true,
                 event::KeyCode::Backspace => component.input_component.delete_pre_char(),
                 event::KeyCode::Delete => component.input_component.delete_suf_char(),
                 event::KeyCode::Left => component
@@ -173,10 +178,6 @@ impl SettingUI {
                     }
                 }
                 event::KeyCode::Char(x) => component.input_component.enter_char(x),
-                event::KeyCode::Enter => component.input_component.handle_enter_key(),
-                event::KeyCode::Tab => self.next_input_field(),
-                event::KeyCode::F(2) => self.save_config(),
-                event::KeyCode::Esc => self.should_exit = true,
                 _ => {}
             }
         }
@@ -196,9 +197,9 @@ impl SettingUI {
 
     /// 切换到下一个输入组件
     fn next_input_field(&mut self) {
-        let current = self.select_input_field.clone() as i32;
-        let next = (current + 1) % 8;
-        self.select_input_field = next.try_into().unwrap();
+        let current = self.select_input_field.clone() as usize;
+        let next = (current + 1) % InputIdentifier::COUNT;
+        self.select_input_field = InputIdentifier::from_repr(next).unwrap();
     }
 
     /// 保存当前配置并退出配置窗口

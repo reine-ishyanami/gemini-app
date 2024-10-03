@@ -171,12 +171,12 @@ impl Widget for DeletePopup {
             Layout::horizontal([Length(1), Fill(1), Length(1), Fill(1), Length(1)]).areas(button_area);
         let (confirm_button_style, cancel_button_style) = match self.selected_button {
             Confirm => (
-                Style::default().fg(Color::White).bg(Color::Green),
+                Style::default().fg(Color::White).bg(self.button_selected_bg_color),
                 Style::default().fg(Color::White),
             ),
             Cancel => (
                 Style::default().fg(Color::White),
-                Style::default().fg(Color::White).bg(Color::Green),
+                Style::default().fg(Color::White).bg(self.button_selected_bg_color),
             ),
         };
         // 确认按钮
@@ -186,7 +186,7 @@ impl Widget for DeletePopup {
         let cancel_button = Paragraph::new("Cancel").style(cancel_button_style).centered();
         cancel_button.render(cancel_area, buf);
         // 边框
-        let border_block = Block::default().style(Color::Blue).borders(Borders::ALL);
+        let border_block = Block::default().style(self.border_color).borders(Borders::ALL);
         border_block.render(area, buf);
     }
 }

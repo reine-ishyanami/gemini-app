@@ -18,6 +18,7 @@ nanoid = { workspace = true }
 rusqlite = { workspace = true }
 image = { workspace = true }
 reqwest = { workspace = true }
+strum = { workspace = true }
 
 [[bin]]
 name = "gemini"
