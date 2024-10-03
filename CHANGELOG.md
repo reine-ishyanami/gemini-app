@@ -15,6 +15,20 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -->
 
+# Version 0.5.0 (2024-10-03)
+
+1. add history conversation sidebar.
+
+2. press F3/Ctrl + s to show/hide the sidebar.
+
+3. press Tab to swicth the focus component.
+
+4. press Up/Down to select the conversation when focus on the history conversation block.
+
+5. press Delete to delete the selected conversation.
+
+6. press Enter to load the selected conversation.
+
 # Version 0.4.0 (2024-09-22)
 
 1. add gemini image analysis in application.
