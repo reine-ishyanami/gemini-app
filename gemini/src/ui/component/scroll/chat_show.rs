@@ -68,7 +68,7 @@ impl ChatShowScrollProps {
             .clone()
             .iter()
             .map(|item| {
-                if item.sender == Never {
+                if matches!(item.sender, Never) {
                     0
                 } else {
                     item.message.lines().count() as u16 + TOP_BOTTOM_BORDER_TIME_HEIGHT

@@ -92,7 +92,7 @@ pub enum MainFocusComponent {
 }
 
 /// 响应状态
-#[derive(Default, PartialEq, Eq)]
+#[derive(Default)]
 pub enum ResponseStatus {
     #[default]
     None,
@@ -100,7 +100,6 @@ pub enum ResponseStatus {
     Failed(String),
 }
 
-#[derive(PartialEq, Eq)]
 enum ChatType {
     Simple { message: String },
     Image { message: String, image_path: String },
@@ -556,7 +555,7 @@ impl UI {
     /// 当聚焦于输入框时，处理输入
     fn handle_input_key_event(&mut self, key: event::KeyEvent, tx: mpsc::Sender<ChatType>) {
         // 如果是除 Tab 键外其他任意按键事件，则清空错误提示消息
-        if key.code != event::KeyCode::Tab && self.response_status != ResponseStatus::None {
+        if key.code != event::KeyCode::Tab && !matches!(self.response_status, ResponseStatus::None) {
             self.response_status = ResponseStatus::None;
         }
         match key.code {

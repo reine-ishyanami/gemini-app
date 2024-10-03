@@ -16,7 +16,7 @@ pub struct ChatMessage {
 }
 
 /// 发送者类型
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Sender {
     /// 用户发送的消息, 第一个元组参数为图片路径
     User(String),
