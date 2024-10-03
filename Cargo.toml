@@ -16,23 +16,18 @@ chrono = "0.4.38" # 时间处理库
 nanoid = "0.4.0" # 唯一ID生成库
 rusqlite = { version = "0.32.1", features = ["bundled", "chrono"] } # 数据库驱动库
 image = "0.25.2" # 图像处理库
-strum = { version = "0.26", features = ["derive"] }   # 枚举增强库
+strum = { version = "0.26", features = ["derive"] } # 枚举增强库
 
 # Config for 'cargo dist'
 [workspace.metadata.dist]
 # The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.20.0"
+cargo-dist-version = "0.22.1"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
 installers = []
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = [
-    "aarch64-apple-darwin",
-    "x86_64-apple-darwin",
-    "x86_64-unknown-linux-gnu",
-    "x86_64-pc-windows-msvc",
-]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 
 # The profile that 'cargo dist' will build with
 [profile.dist]
