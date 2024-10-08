@@ -1,2 +1,2 @@
-pub mod main_page;
-pub mod setting_page;
+pub(crate) mod main_page;
+pub(crate) mod setting_page;
