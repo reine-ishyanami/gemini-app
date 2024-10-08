@@ -233,6 +233,20 @@ pub fn save_conversation(conversation_id: String, conversation_title: String, me
     Ok(())
 }
 
+/// 修改会话标题
+pub fn _modify_title(conversation_id: String, conversation_title: String) -> Result<()> {
+    let binding = DB_CONNECTION;
+    let conn = binding.borrow();
+    let _ = conn.execute(
+        r#"
+        UPDATE FROM gemini_conversation SET conversation_title = ?1
+        WHERE conversation_id = ?2
+        "#,
+        [conversation_title.clone(), conversation_id.clone()],
+    )?;
+    Ok(())
+}
+
 /// 生成唯一 ID
 pub fn generate_unique_id() -> String {
     nanoid!(10)

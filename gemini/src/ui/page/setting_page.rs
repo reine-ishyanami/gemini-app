@@ -12,10 +12,7 @@ use strum::{EnumCount, FromRepr};
 
 use crate::utils::store_utils::{read_config, save_config, StoreData};
 
-use super::{
-    component::input::{input_trait::InputTextComponent, text_area::TextArea},
-    TextField,
-};
+use crate::ui::component::input::{input_trait::InputTextComponent, text_area::TextArea, text_field::TextField};
 
 /// 窗口UI
 pub struct SettingUI {

@@ -3,7 +3,7 @@ mod ui;
 mod utils;
 
 use anyhow::Result;
-use ui::UI;
+use ui::page::main_page::UI;
 
 fn main() -> Result<()> {
     // Setup terminal
