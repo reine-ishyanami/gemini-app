@@ -147,6 +147,8 @@ impl InputTextComponent for TextField {
             let after_char_to_delete = self.input_buffer.chars().skip(current_index);
             self.input_buffer = before_char_to_delete.chain(after_char_to_delete).collect();
             self.move_cursor_left(delete_char);
+            // 判断是否需要左指针左移补全空位
+            self.mvoe_start_left_1();
         }
     }
 
@@ -158,6 +160,8 @@ impl InputTextComponent for TextField {
             let before_char_to_delete = self.input_buffer.chars().take(current_index);
             let after_char_to_delete = self.input_buffer.chars().skip(from_left_to_current_index);
             self.input_buffer = before_char_to_delete.chain(after_char_to_delete).collect();
+            // 判断是否需要左指针左移补全空位
+            self.mvoe_start_left_1();
         }
     }
 
@@ -208,5 +212,21 @@ impl TextField {
             }
         }
         width > self.width
+    }
+
+    /// 判断是否需要向左移动左指针位置 1 位，如是则移动一位
+    fn mvoe_start_left_1(&mut self) {
+        let left = self.left_index;
+        let max = self.input_buffer.chars().count();
+        let mut width = 0;
+        for i in left..max {
+            if let Some(c) = self.input_buffer.clone().chars().nth(i) {
+                width += c_len(c);
+            }
+        }
+        // 如果宽度小于输入框宽度，则左指针左移一位
+        if width < self.width {
+            self.left_index = self.left_index.saturating_sub(1);
+        }
     }
 }

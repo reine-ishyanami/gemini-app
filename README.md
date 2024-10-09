@@ -49,10 +49,10 @@ This is a Rust library for interacting with the Gemini API. It provides a simple
 
 ## ToDo
 
-- [ ] fix the textfield bug
-
 - [ ] fix the textarea bug
 
 ## Done
+
+- [x] fix the textfield bug
 
 - [x] history chat
