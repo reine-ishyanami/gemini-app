@@ -167,7 +167,7 @@ pub fn save_conversation(conversation_id: String, conversation_title: String, me
         let date_time = message.date_time;
         let _ = conn.execute(
             r#"
-        UPDATE FROM gemini_conversation SET conversation_modify_time = ?1
+        UPDATE gemini_conversation SET conversation_modify_time = ?1
         WHERE conversation_id = ?2
         "#,
             [date_time.to_string(), conversation_id.clone()],
@@ -234,12 +234,12 @@ pub fn save_conversation(conversation_id: String, conversation_title: String, me
 }
 
 /// 修改会话标题
-pub fn _modify_title(conversation_id: String, conversation_title: String) -> Result<()> {
+pub fn modify_title(conversation_id: String, conversation_title: String) -> Result<()> {
     let binding = DB_CONNECTION;
     let conn = binding.borrow();
     let _ = conn.execute(
         r#"
-        UPDATE FROM gemini_conversation SET conversation_title = ?1
+        UPDATE gemini_conversation SET conversation_title = ?1
         WHERE conversation_id = ?2
         "#,
         [conversation_title.clone(), conversation_id.clone()],

@@ -45,6 +45,8 @@ This is a Rust library for interacting with the Gemini API. It provides a simple
 
 12. press F2/Ctrl + s to save the modify of settings.
 
+13. press F1/Ctrl + t to edit/save the title of the chat.
+
 ## ToDo
 
 - [ ] fix the textfield bug

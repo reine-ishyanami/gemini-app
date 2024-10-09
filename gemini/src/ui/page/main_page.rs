@@ -32,7 +32,7 @@ use strum::{EnumCount, FromRepr};
 use crate::model::view::ChatMessage;
 use crate::model::view::Sender::{Bot, Never, User};
 use crate::ui::component;
-use crate::utils::db_utils::{create_table, generate_unique_id, save_conversation};
+use crate::utils::db_utils::{create_table, generate_unique_id, modify_title, save_conversation};
 use crate::utils::image_utils::{cache_image, read_image_cache};
 use crate::utils::store_utils::{read_config, save_config, StoreData};
 
@@ -61,6 +61,8 @@ pub struct UI {
     title: String,
     /// 对话 id
     conversation_id: String,
+    /// 是否正在编辑标题
+    title_editor_input_field: Option<TextField>,
     chat_item_list: ChatItemListScrollProps,
     chat_show: ChatShowScrollProps,
 }
@@ -298,31 +300,55 @@ impl UI {
         // 如果没有减去这4个宽度，文本可能有显示问题，可以再减去任意宽度，以使得在输出的列表文本右侧留出对应宽度空白
         let chat_area_width = || right_area.width as usize - 10 - 2 - 3 - 1;
         let [header_area, chat_area, input_area] = Layout::vertical([Length(1), Fill(1), Length(3)]).areas(right_area);
-        self.render_header_area(frame, header_area);
         // 输入区域（底部）
         self.render_input_area(frame, input_area);
-        // 聊天记录区域（顶部）
+        // 聊天记录区域（中间）
         self.render_chat_area(frame, chat_area, chat_area_width);
+        // 头部区域（顶部）
+        self.render_header_area(frame, header_area);
     }
 
     /// 渲染头部区域
     fn render_header_area(&mut self, frame: &mut Frame, header_area: Rect) {
-        let [tip_area, title_area] = Layout::horizontal([Length(5), Fill(1)]).areas(header_area);
+        let [tip_area, title_area, edit_tip_area] =
+            Layout::horizontal([Length(10), Fill(1), Length(10)]).areas(header_area);
         let tip_text = if self.sidebar_show { "< F3" } else { "> F3" };
         let tip_paragraph = Paragraph::new(tip_text)
             .style(Style::default().fg(Color::Red))
-            .centered();
+            .left_aligned();
         frame.render_widget(tip_paragraph, tip_area);
 
-        let title = if self.conversation_id.is_empty() {
-            "Gemini Chat"
+        if self.title_editor_input_field.is_none() {
+            let title = if self.title.is_empty() {
+                "Gemini Chat"
+            } else {
+                self.title.as_str()
+            };
+            let title_paragraph = Paragraph::new(title)
+                .style(Style::default().fg(Color::LightBlue))
+                .centered();
+            frame.render_widget(title_paragraph, title_area);
         } else {
-            self.title.as_str()
+            let input_field = self.title_editor_input_field.as_mut().unwrap();
+            input_field.set_width_height(title_area.width as usize, 1);
+            let title_paragraph = Paragraph::new(input_field.should_show_text())
+                .style(Style::default().fg(Color::LightBlue))
+                .left_aligned();
+            frame.render_widget(title_paragraph, title_area);
+
+            let (x, y) = input_field.get_cursor_position();
+            frame.set_cursor_position(CursorPosition::new(title_area.x + x as u16, title_area.y + y as u16));
+        }
+
+        let edit_tip_text = if self.title_editor_input_field.is_none() {
+            "F1(Edit)"
+        } else {
+            "F1(Save)"
         };
-        let title_paragraph = Paragraph::new(title)
-            .style(Style::default().fg(Color::LightBlue))
-            .centered();
-        frame.render_widget(title_paragraph, title_area);
+        let edit_tip_paragraph = Paragraph::new(edit_tip_text)
+            .style(Style::default().fg(Color::Red))
+            .right_aligned();
+        frame.render_widget(edit_tip_paragraph, edit_tip_area);
     }
 
     /// 渲染输入区域
@@ -418,11 +444,15 @@ impl UI {
                         match self.gemini.as_mut().unwrap().chat_conversation(message) {
                             // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
                             Ok(response) => {
+                                // 如果 id 为空，则生成唯一 id
                                 if self.conversation_id.is_empty() {
+                                    self.conversation_id = generate_unique_id();
+                                }
+                                // 如果标题为空，则总结标题
+                                if self.title.is_empty() {
                                     // 总结标题
                                     let title = self.summary_by_gemini(response.clone());
                                     self.title = title;
-                                    self.conversation_id = generate_unique_id();
                                 }
                                 // 推送用户发送的消息保存到数据库
                                 let chat_message = self.chat_show.chat_history.pop().unwrap();
@@ -475,11 +505,15 @@ impl UI {
                         {
                             // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
                             Ok(response) => {
+                                // 如果 id 为空，则生成唯一 id
                                 if self.conversation_id.is_empty() {
+                                    self.conversation_id = generate_unique_id();
+                                }
+                                // 如果标题为空，则总结标题
+                                if self.title.is_empty() {
                                     // 总结标题
                                     let title = self.summary_by_gemini(response.clone());
                                     self.title = title;
-                                    self.conversation_id = generate_unique_id();
                                 }
                                 // 推送用户发送的消息保存到数据库
                                 let chat_message = self.chat_show.chat_history.pop().unwrap();
@@ -534,6 +568,12 @@ impl UI {
             if key.kind != KeyEventKind::Press {
                 return;
             }
+            // 如果正在编辑标题
+            if self.title_editor_input_field.is_some() {
+                self.handle_title_edit_key_event(key);
+                return;
+            }
+
             match self.focus_component {
                 // 当聚焦于输入框时，处理输入
                 MainFocusComponent::InputField => self.handle_input_key_event(key, tx),
@@ -549,6 +589,24 @@ impl UI {
         }
     }
 
+    /// 处理标题编辑事件
+    fn handle_title_edit_key_event(&mut self, key: event::KeyEvent) {
+        let title_editor = self.title_editor_input_field.as_mut().unwrap();
+        match key.code {
+            event::KeyCode::Char('t') if key.modifiers.contains(event::KeyModifiers::CONTROL) => self.save_title(),
+            event::KeyCode::F(1) => self.save_title(),
+            event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::Backspace => title_editor.delete_pre_char(),
+            event::KeyCode::Left => title_editor.move_cursor_left(title_editor.get_current_char()),
+            event::KeyCode::Right => title_editor.move_cursor_right(title_editor.get_next_char()),
+            event::KeyCode::Home => title_editor.home_of_cursor(),
+            event::KeyCode::End => title_editor.end_of_cursor(),
+            event::KeyCode::Delete => title_editor.delete_suf_char(),
+            event::KeyCode::Char(x) => title_editor.enter_char(x),
+            _ => {}
+        };
+    }
+
     /// 当聚焦于输入框时，处理输入
     fn handle_input_key_event(&mut self, key: event::KeyEvent, tx: mpsc::Sender<ChatType>) {
         // 如果是除 Tab 键外其他任意按键事件，则清空错误提示消息
@@ -556,16 +614,20 @@ impl UI {
             self.response_status = ResponseStatus::None;
         }
         match key.code {
-            event::KeyCode::Esc => self.should_exit = true,
             event::KeyCode::Char('s') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
                 self.show_and_hide_sidebar()
             }
             event::KeyCode::F(3) => self.show_and_hide_sidebar(),
-            event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Char('i') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
                 self.set_or_clear_image_path()
             }
             event::KeyCode::F(4) => self.set_or_clear_image_path(),
+            event::KeyCode::Char('t') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                self.make_title_editable()
+            }
+            event::KeyCode::F(1) => self.make_title_editable(),
+            event::KeyCode::Esc => self.should_exit = true,
+            event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Backspace => self.input_field_component.delete_pre_char(),
             event::KeyCode::Enter => self.submit_message(tx),
             event::KeyCode::Left => self
@@ -580,6 +642,28 @@ impl UI {
             event::KeyCode::Char(x) => self.input_field_component.enter_char(x),
             _ => {}
         };
+    }
+
+    /// 使标题可编辑
+    fn make_title_editable(&mut self) {
+        if self.title_editor_input_field.is_none() {
+            // 如果没有输入框，则创建一个输入框
+            self.title_editor_input_field = Some(TextField::new(self.title.clone()))
+        }
+    }
+
+    // 保存编辑后的标题
+    fn save_title(&mut self) {
+        if self.title_editor_input_field.is_some() {
+            // 如果有输入框，则保存编辑后的标题
+            let content = self.title_editor_input_field.as_ref().unwrap().get_content();
+            self.title = content.clone();
+            // 如果是已有的会话，则修改标题
+            if !self.conversation_id.is_empty() {
+                let _ = modify_title(self.conversation_id.clone(), content);
+            }
+            self.title_editor_input_field = None;
+        }
     }
 
     /// 当聚焦于新建聊天按钮时，处理输入
@@ -739,11 +823,15 @@ impl UI {
     /// 当聚焦于聊天内容显示区域时，处理输入
     fn handle_chat_show_key_event(&mut self, key: event::KeyEvent) {
         match key.code {
-            event::KeyCode::Esc => self.should_exit = true,
             event::KeyCode::Char('s') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
                 self.show_and_hide_sidebar()
             }
             event::KeyCode::F(3) => self.show_and_hide_sidebar(),
+            event::KeyCode::Char('t') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                self.make_title_editable()
+            }
+            event::KeyCode::F(1) => self.make_title_editable(),
+            event::KeyCode::Esc => self.should_exit = true,
             event::KeyCode::Tab => self.next_component(),
             event::KeyCode::Up => self.up(),
             event::KeyCode::Down => self.down(),

@@ -38,8 +38,6 @@ pub struct SelectableConversation {
     pub selected: bool,
     /// 是否聚焦
     pub focused: bool,
-    /// 是否可编辑
-    pub _editable: bool,
 }
 
 /// 聊天记录每一项高度
@@ -117,13 +115,6 @@ impl ChatItemListScrollProps {
         }
     }
 
-    /// 更改选中项状态
-    pub fn _make_selected_editable(&mut self) {
-        if let Some(selected_conversation) = self.chat_history.get_mut(self.selected_conversation) {
-            selected_conversation._editable = !selected_conversation._editable;
-        }
-    }
-
     /// 选中下一个会话
     pub fn next_item(&mut self) {
         if self.selected_conversation < self.chat_history.len() - 1 {
@@ -173,14 +164,12 @@ impl ChatItemListScrollProps {
                     conversation,
                     selected: true,
                     focused,
-                    _editable: false,
                 });
             } else {
                 conversations.push(SelectableConversation {
                     conversation,
                     selected: false,
                     focused,
-                    _editable: false,
                 });
             }
         }
