@@ -15,6 +15,10 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -->
 
+# Version 0.6.1 (2024-10-10)
+
+test aarch64-unknown-linux-gnu package
+
 # Version 0.6.0 (2024-10-10)
 
 1. modify title of current conversation.
