@@ -15,6 +15,10 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -->
 
+# Version 0.6.0 (2024-10-10)
+
+1. modify title of current conversation.
+
 # Version 0.5.0 (2024-10-03)
 
 1. add history conversation sidebar.
