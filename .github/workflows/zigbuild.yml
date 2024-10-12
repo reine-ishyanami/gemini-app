@@ -16,13 +16,10 @@ on:
 
 jobs:
   release:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ${{ contains( inputs.target, 'linux' ) && 'ubuntu-latest' || ( contains( inputs.target, 'apple' ) && 'macos-latest' || ( contains( inputs.target, 'windows' ) && 'windows-latest' || 'ubuntu-latest' ) ) }}
-            build-tool: ${{ contains( inputs.target, 'windows-msvc' ) && 'build' || 'zigbuild' }}
-            product: ${{ contains( inputs.target, 'windows' ) && 'gemini.exe' || 'gemini' }}
+    runs-on: ${{ contains( inputs.target, 'linux' ) && 'ubuntu-latest' || ( contains( inputs.target, 'apple' ) && 'macos-latest' || ( contains( inputs.target, 'windows' ) && 'windows-latest' || 'ubuntu-latest' ) ) }}
+    env:
+      build-tool: ${{ contains( inputs.target, 'windows-msvc' ) && 'build' || 'zigbuild' }}
+      executable: ./target/${{inputs.target}}/release/*.exe
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,16 +27,20 @@ jobs:
       - name: install target
         run: rustup target add ${{ inputs.target }}
       - uses: goto-bus-stop/setup-zig@v2
-        if: ${{ matrix.build-tool == 'zigbuild' }}
+        if: ${{ env.build-tool == 'zigbuild' }}
       - name: Install cargo-zigbuild
-        if: ${{ matrix.build-tool == 'zigbuild' }}
+        if: ${{ env.build-tool == 'zigbuild' }}
         run: cargo install cargo-zigbuild
       - name: cargo compile
-        run: cargo ${{ matrix.build-tool }} --target ${{ inputs.target }} --release
+        run: cargo ${{ env.build-tool }} --target ${{ inputs.target }} --release
       - name: show target
         run: ls -R ./target
+      - name: Get product path
+        if: ${{ runner.os != 'Windows' }}
+        run: echo "executable=$(find . -maxdepth 4 -type f -exec file {} \; | grep 'executable' | grep 'target' | grep -o '^[^:]*')" >> "$GITHUB_ENV"
       - name: Upload product as an artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gemini
-          path: ./target/${{ inputs.target }}/release/${{ matrix.product }}
+          name: artifact
+          path: |
+            ${{ env.executable }}
