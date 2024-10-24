@@ -39,7 +39,7 @@ pub fn query_all() -> Result<Vec<Conversation>> {
     let conn = binding.borrow();
     let mut stmt = conn.prepare(
         r#"SELECT conversation_id, conversation_title, conversation_start_time, conversation_modify_time
-        FROM gemini_conversation"#,
+        FROM gemini_conversation ORDER BY conversation_modify_time DESC"#,
     )?;
     let mut rows = stmt.query_map([], |row| {
         Ok(Conversation {

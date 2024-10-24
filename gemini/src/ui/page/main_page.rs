@@ -447,6 +447,8 @@ impl UI {
                                 // 如果 id 为空，则生成唯一 id
                                 if self.conversation_id.is_empty() {
                                     self.conversation_id = generate_unique_id();
+                                    // 由于是新建会话，若想保持聊天列表选中状态，则需要将选中项加一
+                                    self.chat_item_list.selected_conversation += 1;
                                 }
                                 // 如果标题为空，则总结标题
                                 if self.title.is_empty() {
@@ -508,6 +510,8 @@ impl UI {
                                 // 如果 id 为空，则生成唯一 id
                                 if self.conversation_id.is_empty() {
                                     self.conversation_id = generate_unique_id();
+                                    // 由于是新建会话，若想保持聊天列表选中状态，则需要将选中项加一
+                                    self.chat_item_list.selected_conversation += 1;
                                 }
                                 // 如果标题为空，则总结标题
                                 if self.title.is_empty() {

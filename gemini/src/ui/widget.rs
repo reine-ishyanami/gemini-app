@@ -131,7 +131,7 @@ impl Widget for SelectableConversation {
         let title = self.conversation.conversation_title;
         let date_time = self
             .conversation
-            .conversation_start_time
+            .conversation_modify_time
             .format(" %m/%d %H:%M ")
             .to_string();
         // 去掉上下两侧边框
