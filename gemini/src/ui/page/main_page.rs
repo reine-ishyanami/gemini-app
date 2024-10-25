@@ -55,8 +55,6 @@ pub struct UI {
     current_windows: CurrentWindows,
     /// 图片路径
     image_path: Option<String>,
-    /// 侧边栏是否显示
-    sidebar_show: bool,
     /// 对话标题内容
     title: String,
     /// 对话 id
@@ -231,7 +229,7 @@ impl UI {
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
         // 左侧宽度
-        if self.sidebar_show {
+        if self.chat_item_list.show {
             let [left_area, right_area] = Layout::horizontal([Length(Self::SIDEBAR_WIDTH), Fill(1)]).areas(area);
             self.render_left_area(frame, left_area);
             self.render_right_area(frame, right_area);
@@ -312,7 +310,7 @@ impl UI {
     fn render_header_area(&mut self, frame: &mut Frame, header_area: Rect) {
         let [tip_area, title_area, edit_tip_area] =
             Layout::horizontal([Length(10), Fill(1), Length(10)]).areas(header_area);
-        let tip_text = if self.sidebar_show { "< F3" } else { "> F3" };
+        let tip_text = if self.chat_item_list.show { "< F3" } else { "> F3" };
         let tip_paragraph = Paragraph::new(tip_text)
             .style(Style::default().fg(Color::Red))
             .left_aligned();
@@ -846,7 +844,7 @@ impl UI {
     /// 展示或隐藏侧边栏
     fn show_and_hide_sidebar(&mut self) {
         // 如果侧边栏已经显示，且当前聚焦组件为侧边栏组件，则聚焦到输入框，否则不变
-        if self.sidebar_show {
+        if self.chat_item_list.show {
             self.focus_component = match self.focus_component.clone() {
                 MainFocusComponent::ChatItemList
                 | MainFocusComponent::NewChatButton
@@ -854,12 +852,12 @@ impl UI {
                 other => other,
             }
         }
-        self.sidebar_show = !self.sidebar_show;
+        self.chat_item_list.show = !self.chat_item_list.show;
     }
 
     /// 切换到下一个组件
     fn next_component(&mut self) {
-        if self.sidebar_show {
+        if self.chat_item_list.show {
             let current = self.focus_component.clone() as usize;
             let next = (current + 1) % MainFocusComponent::COUNT;
             self.focus_component = MainFocusComponent::from_repr(next).unwrap();

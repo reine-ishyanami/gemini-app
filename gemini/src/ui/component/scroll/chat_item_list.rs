@@ -28,6 +28,8 @@ pub struct ChatItemListScrollProps {
     pub selected_conversation: usize,
     /// 是否展示确认删除弹窗
     pub popup_delete_confirm_dialog: Option<DeletePopup>,
+    /// 是否展示
+    pub show: bool,
 }
 /// 可一被选中的会话
 #[derive(Clone, Debug)]
@@ -45,6 +47,10 @@ static ITEM_HEIGHT: u16 = 3;
 
 impl ChatItemListScrollProps {
     pub fn draw(&mut self, frame: &mut Frame, area: Rect, is_focused: bool) {
+        // r如果展示侧边栏才显示所有会话列表
+        if !self.show {
+            return;
+        }
         // 查询所有会话
         self.chat_history = self.query_all(is_focused);
         // 最外侧的边框

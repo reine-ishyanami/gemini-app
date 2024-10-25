@@ -26,10 +26,15 @@ const DB_CONNECTION: LazyCell<Connection> = LazyCell::new(|| {
 
 /// 创建表结构
 pub fn create_table() -> Result<()> {
-    let sql_file = include_str!("../../migrations/20240229_create.sql");
+    let sql_files = vec![
+        include_str!("../../migrations/20240929_create.sql"),
+        include_str!("../../migrations/20241025_add_index.sql"),
+    ];
     let mut binding = DB_CONNECTION;
     let conn = binding.borrow_mut();
-    conn.execute_batch(sql_file)?;
+    for sql_file in sql_files {
+        conn.execute_batch(sql_file)?;
+    }
     Ok(())
 }
 
