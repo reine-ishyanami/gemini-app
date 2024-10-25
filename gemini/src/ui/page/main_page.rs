@@ -32,9 +32,13 @@ use strum::{EnumCount, FromRepr};
 use crate::model::view::ChatMessage;
 use crate::model::view::Sender::{Bot, Never, User};
 use crate::ui::component;
-use crate::utils::db_utils::{create_table, generate_unique_id, modify_title, save_conversation};
+use crate::utils::db_utils::{
+    current_db_version, generate_unique_id, modify_title, save_conversation, update_db_structure,
+};
 use crate::utils::image_utils::{cache_image, read_image_cache};
-use crate::utils::store_utils::{read_config, save_config, StoreData};
+use crate::utils::store_utils::{read_config, save_config, update_db_version_into_profile, StoreData};
+
+const ENV_NAME: &str = "GEMINI_KEY";
 
 /// 窗口UI
 #[derive(Default)]
@@ -59,6 +63,8 @@ pub struct UI {
     title: String,
     /// 对话 id
     conversation_id: String,
+    /// 数据库版本
+    db_version: Option<String>,
     /// 是否正在编辑标题
     title_editor_input_field: Option<TextField>,
     chat_item_list: ChatItemListScrollProps,
@@ -68,7 +74,7 @@ pub struct UI {
 #[derive(Default)]
 pub enum CurrentWindows {
     #[default]
-    This,
+    MainWindow,
     SettingWindow(SettingUI),
 }
 
@@ -105,13 +111,17 @@ enum ChatType {
 impl UI {
     /// 启动UI
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        // 与数据库建立连接
-        create_table()?;
         let (tx, rx) = mpsc::channel();
         self.restore_or_new_gemini(None);
+        // 如果数据库版本不一致，则更新数据库结构，补全更新数据库版本
+        if self.db_version.clone().unwrap_or_default() != current_db_version() {
+            // 更新数据库结构
+            update_db_structure()?;
+            self.db_version = Some(current_db_version());
+        }
         while !self.should_exit {
             match self.current_windows {
-                CurrentWindows::This => {
+                CurrentWindows::MainWindow => {
                     terminal.draw(|frame| self.draw(frame))?;
                     self.handle_key(tx.clone(), &rx);
                 }
@@ -121,7 +131,7 @@ impl UI {
                         if setting_ui.update {
                             self.restore_or_new_gemini(None);
                         }
-                        self.current_windows = CurrentWindows::This;
+                        self.current_windows = CurrentWindows::MainWindow;
                     } else {
                         terminal.draw(|frame| setting_ui.draw(frame))?;
                         setting_ui.handle_key();
@@ -129,6 +139,8 @@ impl UI {
                 }
             }
         }
+        // 程序退出时，保存数据版本变更
+        let _ = update_db_version_into_profile();
         Ok(())
     }
 
@@ -140,28 +152,32 @@ impl UI {
     fn restore_or_new_gemini(&mut self, key: Option<String>) {
         // 尝试读取配置文件
         match read_config() {
-            Ok(gemini) => {
-                match self.gemini.clone() {
-                    Some(gemini_origin) => {
-                        // gemini 已经存在，则更新配置信息
-                        let mut gemini_new =
-                            Gemini::rebuild(gemini.key, gemini.model, gemini_origin.contents, gemini.options);
-                        gemini_new.set_system_instruction(gemini.system_instruction.unwrap_or("".into()));
-                        self.gemini = Some(gemini_new)
-                    }
-                    None => {
-                        // 读取到配置文件则直接使用配置文件中的 Gemini API
-                        let mut gemini_new = Gemini::rebuild(gemini.key, gemini.model, Vec::new(), gemini.options);
-                        gemini_new.set_system_instruction(gemini.system_instruction.unwrap_or("".into()));
-                        self.gemini = Some(gemini_new)
-                    }
+            Ok(store_data) => {
+                if let Some(gemini_origin) = self.gemini.clone() {
+                    // gemini 已经存在，则此方法是在settings页面切换到main页面，更新配置信息
+                    let mut gemini_new = Gemini::rebuild(
+                        store_data.key,
+                        store_data.model,
+                        gemini_origin.contents,
+                        store_data.options,
+                    );
+                    gemini_new.set_system_instruction(store_data.system_instruction.unwrap_or("".into()));
+                    self.gemini = Some(gemini_new)
+                } else {
+                    // gemini 不存在，读取到配置文件则直接使用配置文件中的 Gemini API
+                    let mut gemini_new =
+                        Gemini::rebuild(store_data.key, store_data.model, Vec::new(), store_data.options);
+                    gemini_new.set_system_instruction(store_data.system_instruction.unwrap_or("".into()));
+                    // 读取数据库版本
+                    self.db_version = store_data.db_version;
+                    self.gemini = Some(gemini_new)
                 }
             }
             Err(_) => {
                 if let Some(key) = key {
                     // 尝试从 key 构造 Gemini API
                     self.init_gemini(key);
-                } else if let Ok(key) = std::env::var("GEMINI_KEY") {
+                } else if let Ok(key) = std::env::var(ENV_NAME) {
                     // 尝试从环境变量中读取密钥
                     self.init_gemini(key);
                 }
@@ -196,6 +212,7 @@ impl UI {
             model: gemini.model.clone(),
             system_instruction: Some(system_instruction),
             options: gemini.options.clone(),
+            db_version: None,
         };
         let _ = save_config(data);
         self.gemini = Some(gemini)
@@ -894,6 +911,7 @@ impl UI {
         let image_path = self.image_path.clone().unwrap_or_default();
         if !self.input_field_component.get_content().is_empty() {
             if self.gemini.is_none() {
+                // 传入 key 创建客户端
                 self.restore_or_new_gemini(Some(self.input_field_component.get_content()));
             } else {
                 self.chat_show.chat_history.push(ChatMessage {

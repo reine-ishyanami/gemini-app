@@ -24,8 +24,13 @@ const DB_CONNECTION: LazyCell<Connection> = LazyCell::new(|| {
     Connection::open(db_path).unwrap()
 });
 
+/// 当前数据库版本
+pub fn current_db_version() -> String {
+    "20241025_add_index".into()
+}
+
 /// 创建表结构
-pub fn create_table() -> Result<()> {
+pub fn update_db_structure() -> Result<()> {
     let sql_files = vec![
         include_str!("../../migrations/20240929_create.sql"),
         include_str!("../../migrations/20241025_add_index.sql"),
