@@ -825,7 +825,7 @@ impl UI {
         }
     }
 
-    /// 当聚焦于退出按钮时，处理进入设置菜单
+    /// 当聚焦于设置按钮时，处理进入设置菜单
     fn handle_setting_button_key_event(&mut self, key: event::KeyEvent) {
         match key.code {
             event::KeyCode::Esc => self.should_exit = true,

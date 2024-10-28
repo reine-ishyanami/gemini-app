@@ -1,58 +1,93 @@
-<!--
- Copyright (C) 2024 reine-ishyanami
+<div align="center">
 
- This program is free software: you can redistribute it and/or modify
- it under the terms of the GNU Affero General Public License as
- published by the Free Software Foundation, either version 3 of the
- License, or (at your option) any later version.
+**&gt; English &lt;** | [简体中文](README_zh.md)
 
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU Affero General Public License for more details.
+</div>
 
- You should have received a copy of the GNU Affero General Public License
- along with this program.  If not, see <https://www.gnu.org/licenses/>.
--->
+# Gemini Client Based on Command Line Keyboard Operations
 
-# Gemini Api For Tui
+## Introduction
 
-This is a Rust library for interacting with the Gemini API. It provides a simple interface for sending and receiving Gemini messages. and also provides a simple terminal ui for interacte with Google Gemini.
+This is a terminal command-line tool for interacting with the Gemini API, providing a simple terminal interface for engaging with the Gemini model.
 
-## Usage
+## Installation and Usage
 
-1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey) to generate you api key.
+1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey) to generate an API key.
 
-2. set the environment variable `GEMINI_KEY` with your api key. (Optional: you can also set the api key when application started)
+2. In the command line, enter `./gemini` to run the Gemini client, input your API key when prompted, and press Enter to confirm.
 
-3. download the application from release page or build it from source.
+3. Start using the client.
 
-4. enter something and press enter to ask the gemini.
+## Key Functions
 
-5. press Tab to switch focus next component.
+### Chat Interface
 
-6. input a image path or url in the `input` textfield and press F4/Ctrl + i to store the image for sending the request with the image in next time.
+#### Common Key Functions
 
-7. press F4/Ctrl + i to clear the image when setted the image.
+| Key     | Function                     |
+|---------|------------------------------|
+| `Esc`   | Exit the program             |
+| `Tab`   | Switch focus between components |
+| `F3/Ctrl+s` | Show or hide the sidebar     |
 
-8. press F3/Ctrl + s to open/close side bar.
+#### Unique Key Functions
 
-9. press Up/Down to selected history chat item.
+1. When focused on the input box:
 
-10. press Enter to show selected history chat.
+    | Key          | Function                              |
+    |--------------|---------------------------------------|
+    | `Enter`      | Send message                          |
+    | `F1/Ctrl+t`  | Edit title                            |
+    | `F4/Ctrl+i`  | Insert an image corresponding to the input box path or delete image |
+    | `Backspace`  | Delete the character before the cursor |
+    | `Delete`     | Delete the character after the cursor |
+    | `Left`       | Move cursor left                      |
+    | `Right`      | Move cursor right                     |
+    | `Home`       | Move cursor to the beginning of the line |
+    | `End`        | Move cursor to the end of the line   |
+    | `Character Key` | Input character                    |
 
-11. press Del to delete selected history chat, you should confirm the action, press Tab to switch, press Enter again to confirm or cancel.
+2. When focused on the chat content display area:
 
-12. press F2/Ctrl + s to save the modify of settings.
+    | Key     | Function                      |
+    |---------|-------------------------------|
+    | `F1/Ctrl+t` | Edit title                  |
+    | `Up`    | Scroll messages up            |
+    | `Down`  | Scroll messages down          |
 
-13. press F1/Ctrl + t to edit/save the title of the chat.
+3. When focused on the new chat button:
 
-## ToDo
+    | Key     | Function                      |
+    |---------|-------------------------------|
+    | `Enter` | Start a new chat              |
 
-- [ ] fix the textarea bug
+4. When focused on the chat list:
 
-## Done
+    | Key     | Function                      |
+    |---------|-------------------------------|
+    | `Up`    | Previous chat record          |
+    | `Down`  | Next chat record              |
+    | `Delete` | Delete chat record (requires confirmation) |
+    | `Enter` | Load chat record               |
 
-- [x] fix the textfield bug
+5. When focused on the settings button:
 
-- [x] history chat
+    | Key     | Function                      |
+    |---------|-------------------------------|
+    | `Enter` | Enter settings menu            |
+
+### Settings Interface
+
+| Key     | Function                      |
+|---------|-------------------------------|
+| `Esc`   | Exit settings menu            |
+| `Tab`   | Switch focus between components |
+| `F2/Ctrl+s` | Save settings and exit menu |
+| `Enter` | Insert new line (if applicable) |
+| `Backspace` | Delete the character before the cursor |
+| `Delete` | Delete the character after the cursor |
+| `Left`   | Move cursor left              |
+| `Right`  | Move cursor right             |
+| `Home`   | Move cursor to the beginning of the line |
+| `End`    | Move cursor to the end of the line |
+| `Character Key` | Input character        |
