@@ -20,23 +20,6 @@ strum = { version = "0.26", features = ["derive"] } # 枚举增强库
 rppal = "0.19.0"  # 外设访问
 libc = "0.2.159"  # 系统调用库
 
-# Config for 'cargo dist'
-[workspace.metadata.dist]
-# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.22.1"
-# CI backends to support
-ci = "github"
-# The installers to generate for each app
-installers = []
-# Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "armv7-unknown-linux-gnueabihf", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
-github-build-setup = "../install-arm-linkers.yml"
-
-[workspace.metadata.dist.github-custom-runners]
-aarch64-apple-darwin = "macos-14"
-x86_64-apple-darwin = "macos-12"
-x86_64-unknown-linux-gnu = "ubuntu-latest"
-x86_64-pc-windows-msvc = "windows-latest"
 
 # The profile that 'cargo dist' will build with
 [profile.dist]

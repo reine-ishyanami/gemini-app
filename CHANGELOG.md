@@ -15,9 +15,15 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -->
 
+# Version 0.7.0 (2024-10-29)
+
+1. optimize startup speed.
+
+2. chat list items are sorted in descending order by latest time.
+
 # Version 0.6.1 (2024-10-10)
 
-test aarch64-unknown-linux-gnu package
+test aarch64-unknown-linux-gnu package.
 
 # Version 0.6.0 (2024-10-10)
 
@@ -47,25 +53,25 @@ test aarch64-unknown-linux-gnu package
 
 # Version 0.3.0 (2024-09-19)
 
-1. add gemini setting for chat with gemini server
+1. add gemini setting for chat with gemini server.
 
-2. (todo) fix the textarea cursor bug
+2. (todo) fix the textarea cursor bug.
 
 # Version 0.2.2 (2024-09-11)
 
-test submodules split
+test submodules split.
 
 # Version 0.2.1 (2024-09-09)
 
-feat: gemini client data persistence
+feat: gemini client data persistence.
 
 # Version 0.2.0 (2024-09-08)
 
-fix: linux couldn't auto refresh the chat history
+fix: linux couldn't auto refresh the chat history.
 
 # Version 0.1.1 (2024-09-02)
 
-fix: after receive message first char can't input
+fix: after receive message first char can't input.
 
 # Version 0.1.0 (2024-09-02)
 
