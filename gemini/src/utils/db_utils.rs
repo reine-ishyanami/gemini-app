@@ -1,13 +1,13 @@
 use std::{
     borrow::{Borrow, BorrowMut},
     env,
+    sync::{LazyLock, Mutex},
 };
 
 use nanoid::nanoid;
 
 use anyhow::Result;
 use rusqlite::Connection;
-use std::cell::LazyCell;
 
 use crate::model::{
     db::{Conversation, ImageRecord, MessageRecord},
@@ -17,11 +17,10 @@ use crate::model::{
 use super::image_utils::{cache_image, delete_image_cache};
 
 /// 数据库连接
-#[allow(clippy::declare_interior_mutable_const)]
-const DB_CONNECTION: LazyCell<Connection> = LazyCell::new(|| {
+static DB_CONNECTION: LazyLock<Mutex<Connection>> = LazyLock::new(|| {
     let exe_path = env::current_exe().unwrap();
     let db_path = exe_path.parent().unwrap().join("gemini.db");
-    Connection::open(db_path).unwrap()
+    Mutex::new(Connection::open(db_path).unwrap())
 });
 
 /// 当前数据库版本
@@ -35,7 +34,7 @@ pub fn update_db_structure() -> Result<()> {
         include_str!("../../migrations/20240929_create.sql"),
         include_str!("../../migrations/20241025_add_index.sql"),
     ];
-    let mut binding = DB_CONNECTION;
+    let mut binding = DB_CONNECTION.lock().unwrap();
     let conn = binding.borrow_mut();
     for sql_file in sql_files {
         conn.execute_batch(sql_file)?;
@@ -45,7 +44,7 @@ pub fn update_db_structure() -> Result<()> {
 
 /// 查询所有会话
 pub fn query_all() -> Result<Vec<Conversation>> {
-    let binding = DB_CONNECTION;
+    let binding = DB_CONNECTION.lock().unwrap();
     let conn = binding.borrow();
     let mut stmt = conn.prepare(
         r#"SELECT conversation_id, conversation_title, conversation_start_time, conversation_modify_time
@@ -69,7 +68,7 @@ pub fn query_all() -> Result<Vec<Conversation>> {
 
 /// 根据会话ID查询会话详情
 pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
-    let binding = DB_CONNECTION;
+    let binding = DB_CONNECTION.lock().unwrap();
     let conn = binding.borrow();
     let mut stmt = conn.prepare(
         r#"SELECT
@@ -123,7 +122,7 @@ pub fn query_detail_by_id(conversation: Conversation) -> Result<Conversation> {
 
 /// 根据对话 ID 删除一个对话
 pub fn delete_one(conversation: Conversation) -> Result<()> {
-    let binding = DB_CONNECTION;
+    let binding = DB_CONNECTION.lock().unwrap();
     let conn = binding.borrow();
     // 删除图片记录
     conversation
@@ -150,7 +149,7 @@ pub fn delete_one(conversation: Conversation) -> Result<()> {
 
 /// 保存对话
 pub fn save_conversation(conversation_id: String, conversation_title: String, message: ChatMessage) -> Result<()> {
-    let binding = DB_CONNECTION;
+    let binding = DB_CONNECTION.lock().unwrap();
     let conn = binding.borrow();
     // 查询是否存在此会话
     let mut stmt = conn.prepare(
@@ -245,7 +244,7 @@ pub fn save_conversation(conversation_id: String, conversation_title: String, me
 
 /// 修改会话标题
 pub fn modify_title(conversation_id: String, conversation_title: String) -> Result<()> {
-    let binding = DB_CONNECTION;
+    let binding = DB_CONNECTION.lock().unwrap();
     let conn = binding.borrow();
     let _ = conn.execute(
         r#"
