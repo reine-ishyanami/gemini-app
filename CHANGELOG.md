@@ -15,6 +15,10 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 -->
 
+# Version 0.7.1 (2024-11-5)
+
+fix model gemini-1.5-pro can't working.
+
 # Version 0.7.0 (2024-10-29)
 
 1. optimize startup speed.
