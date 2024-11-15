@@ -214,6 +214,7 @@ impl UI {
             options: gemini.options.clone(),
             db_version: None,
         };
+        gemini.start_chat(Vec::new());
         let _ = save_config(data);
         self.gemini = Some(gemini)
     }
@@ -224,7 +225,11 @@ impl UI {
         let mut pure_gemini = Gemini::new(gemini.key, LanguageModel::Gemini1_5Flash);
         pure_gemini.set_options(gemini.options.clone());
         pure_gemini.set_system_instruction("请给我概括一下这段文字内容，不包含任意标点符号，不大于15字。".into());
-        pure_gemini.chat_once(message).unwrap_or_default()
+        if let Ok((s, _)) = pure_gemini.send_simple_message(message) {
+            s
+        } else {
+            "".into()
+        }
     }
 
     /// 判断图片路径是否为空
@@ -456,9 +461,9 @@ impl UI {
             if let Ok(request) = rx.recv() {
                 match request {
                     ChatType::Simple { message } => {
-                        match self.gemini.as_mut().unwrap().chat_conversation(message) {
+                        match self.gemini.as_mut().unwrap().send_simple_message(message) {
                             // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
-                            Ok(response) => {
+                            Ok((response, _)) => {
                                 // 如果 id 为空，则生成唯一 id
                                 if self.conversation_id.is_empty() {
                                     self.conversation_id = generate_unique_id();
@@ -514,14 +519,9 @@ impl UI {
                         }
                     }
                     ChatType::Image { message, image_path } => {
-                        match self
-                            .gemini
-                            .as_mut()
-                            .unwrap()
-                            .image_analysis_conversation(image_path, message)
-                        {
+                        match self.gemini.as_mut().unwrap().send_image_message(image_path, message) {
                             // 成功接收响应消息后，将响应消息封装后加入到消息列表以供展示
-                            Ok(response) => {
+                            Ok((response, _)) => {
                                 // 如果 id 为空，则生成唯一 id
                                 if self.conversation_id.is_empty() {
                                     self.conversation_id = generate_unique_id();
