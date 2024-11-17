@@ -1,5 +1,7 @@
 use std::sync::mpsc;
 
+use self::component::popup::input_popup::InputPopup;
+
 use super::setting_page::SettingUI;
 use anyhow::Result;
 use chrono::Local;
@@ -16,7 +18,7 @@ use ratatui::layout::Position as CursorPosition;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::block::{Position as TitlePosition, Title};
-use ratatui::widgets::{Clear, Paragraph, Widget};
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 use ratatui::{
     crossterm::event::{self, Event, KeyEventKind},
@@ -69,6 +71,7 @@ pub struct UI {
     title_editor_input_field: Option<TextField>,
     chat_item_list: ChatItemListScrollProps,
     chat_show: ChatShowScrollProps,
+    image_url_input_popup: Option<InputPopup>,
 }
 /// 窗口枚举
 #[derive(Default)]
@@ -186,18 +189,9 @@ impl UI {
     }
 
     /// 设置图片或清除图片路径
-    fn set_or_clear_image_path(&mut self) {
-        match self.image_path.clone() {
-            Some(_) => self.image_path = None,
-            None => {
-                self.image_path = if self.input_field_component.get_content().is_empty() {
-                    None
-                } else {
-                    let res = Some(self.input_field_component.get_content());
-                    self.input_field_component.clear();
-                    res
-                }
-            }
+    fn show_image_input(&mut self) {
+        if self.image_url_input_popup.is_none() {
+            self.image_url_input_popup = Some(InputPopup::new(self.image_path.clone().unwrap_or_default(), 72, 3));
         }
     }
 
@@ -263,10 +257,14 @@ impl UI {
             let x = (area.width - popup.width as u16) / 2;
             let y = (area.height - popup.height as u16) / 2;
             let rect = Rect::new(x, y, popup.width as u16, popup.height as u16);
-            // 先清空弹窗区域内容
-            frame.render_widget(Clear, rect);
-            let buf = frame.buffer_mut();
-            popup.render(rect, buf);
+            popup.draw(frame, rect);
+        }
+        // 是否显示图片输入弹窗
+        if let Some(ref mut popup) = self.image_url_input_popup {
+            let x = (area.width - popup.width as u16) / 2;
+            let y = (area.height - popup.height as u16) / 2;
+            let rect = Rect::new(x, y, popup.width as u16, popup.height as u16);
+            popup.draw(frame, rect);
         }
     }
 
@@ -389,12 +387,13 @@ impl UI {
                 .alignment(Alignment::Right)
         } else {
             Title::from(format!(
-                "[{}] Press F4 To Clear",
+                "[{}] Press F4 Modify Image Path",
                 self.image_path.clone().unwrap_or_default()
             ))
             .position(TitlePosition::Top)
             .alignment(Alignment::Right)
         };
+
         // 根据是否选中组件变色
         let input_block = Block::bordered()
             .title(
@@ -628,6 +627,24 @@ impl UI {
 
     /// 当聚焦于输入框时，处理输入
     fn handle_input_key_event(&mut self, key: event::KeyEvent, tx: mpsc::Sender<ChatType>) {
+        // 如果输入图片路径的弹窗处于显示状态，则将按键事件视为弹窗的按键事件
+        if let Some(ref mut popup) = self.image_url_input_popup {
+            // 处理弹窗事件，如果存在返回值，
+            match popup.handle_key(key) {
+                component::popup::input_popup::InputPopupHandleEvent::Save(res) => {
+                    self.image_url_input_popup = None;
+                    self.image_path = Some(res);
+                }
+                component::popup::input_popup::InputPopupHandleEvent::Cancel => self.image_url_input_popup = None,
+                component::popup::input_popup::InputPopupHandleEvent::Nothing => {}
+            }
+        } else {
+            self.handle_input_key_event_common(key, tx);
+        }
+    }
+
+    // 当不处于图片路径输入弹窗状态时，处理输入
+    fn handle_input_key_event_common(&mut self, key: event::KeyEvent, tx: mpsc::Sender<ChatType>) {
         // 如果是除 Tab 键外其他任意按键事件，则清空错误提示消息
         if key.code != event::KeyCode::Tab && !matches!(self.response_status, ResponseStatus::None) {
             self.response_status = ResponseStatus::None;
@@ -638,9 +655,9 @@ impl UI {
             }
             event::KeyCode::F(3) => self.show_and_hide_sidebar(),
             event::KeyCode::Char('i') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
-                self.set_or_clear_image_path()
+                self.show_image_input()
             }
-            event::KeyCode::F(4) => self.set_or_clear_image_path(),
+            event::KeyCode::F(4) => self.show_image_input(),
             event::KeyCode::Char('t') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
                 self.make_title_editable()
             }
