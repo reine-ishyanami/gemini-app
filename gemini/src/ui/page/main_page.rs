@@ -1,4 +1,5 @@
 use std::sync::mpsc;
+use std::thread;
 
 use self::component::popup::input_popup::InputPopup;
 
@@ -65,13 +66,16 @@ pub struct UI {
     title: String,
     /// 对话 id
     conversation_id: String,
+    /// 是否正在生成标题
+    gen_title_ing: bool,
     /// 数据库版本
     db_version: Option<String>,
     /// 是否正在编辑标题
     title_editor_input_field: Option<TextField>,
+    /// 是否显示图片输入弹窗
+    image_url_input_popup: Option<InputPopup>,
     chat_item_list: ChatItemListScrollProps,
     chat_show: ChatShowScrollProps,
-    image_url_input_popup: Option<InputPopup>,
 }
 /// 窗口枚举
 #[derive(Default)]
@@ -114,7 +118,8 @@ enum ChatType {
 impl UI {
     /// 启动UI
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        let (tx, rx) = mpsc::channel();
+        let (chat_tx, chat_rx) = mpsc::channel();
+        let (title_tx, title_rx) = mpsc::channel();
         self.restore_or_new_gemini(None);
         // 如果数据库版本不一致，则更新数据库结构，补全更新数据库版本
         if self.db_version.clone().unwrap_or_default() != current_db_version() {
@@ -123,10 +128,15 @@ impl UI {
             self.db_version = Some(current_db_version());
         }
         while !self.should_exit {
+            // 异步生成标题
+            if let Ok(title) = title_rx.try_recv() {
+                self.gen_title_ing = false;
+                self.title = title;
+            }
             match self.current_windows {
                 CurrentWindows::MainWindow => {
                     terminal.draw(|frame| self.draw(frame))?;
-                    self.handle_key(tx.clone(), &rx);
+                    self.handle_key(chat_tx.clone(), title_tx.clone(), &chat_rx);
                 }
                 CurrentWindows::SettingWindow(ref mut setting_ui) => {
                     if setting_ui.should_exit {
@@ -191,7 +201,7 @@ impl UI {
     /// 设置图片或清除图片路径
     fn show_image_input(&mut self) {
         if self.image_url_input_popup.is_none() {
-            self.image_url_input_popup = Some(InputPopup::new(self.image_path.clone().unwrap_or_default(), 72, 3));
+            self.image_url_input_popup = Some(InputPopup::new(self.image_path.clone().unwrap_or_default(), 50, 3));
         }
     }
 
@@ -211,19 +221,6 @@ impl UI {
         gemini.start_chat(Vec::new());
         let _ = save_config(data);
         self.gemini = Some(gemini)
-    }
-
-    /// 通过纯净的 Gemini API 获取对话摘要
-    fn summary_by_gemini(&self, message: String) -> String {
-        let gemini = self.gemini.clone().unwrap();
-        let mut pure_gemini = Gemini::new(gemini.key, LanguageModel::Gemini1_5Flash);
-        pure_gemini.set_options(gemini.options.clone());
-        pure_gemini.set_system_instruction("请给我概括一下这段文字内容，不包含任意标点符号，不大于15字。".into());
-        if let Ok((s, _)) = pure_gemini.send_simple_message(message) {
-            s
-        } else {
-            "".into()
-        }
     }
 
     /// 判断图片路径是否为空
@@ -261,6 +258,7 @@ impl UI {
         }
         // 是否显示图片输入弹窗
         if let Some(ref mut popup) = self.image_url_input_popup {
+            popup.set_size(area.width.saturating_sub(50).max(50) as usize, 3);
             let x = (area.width - popup.width as u16) / 2;
             let y = (area.height - popup.height as u16) / 2;
             let rect = Rect::new(x, y, popup.width as u16, popup.height as u16);
@@ -453,11 +451,16 @@ impl UI {
 /// 处理输入事件
 impl UI {
     /// 处理按键事件
-    fn handle_key(&mut self, tx: mpsc::Sender<ChatType>, rx: &mpsc::Receiver<ChatType>) {
+    fn handle_key(
+        &mut self,
+        chat_tx: mpsc::Sender<ChatType>,
+        title_rx: mpsc::Sender<String>,
+        chat_rx: &mpsc::Receiver<ChatType>,
+    ) {
         // 如果接收消息位为真
         if self.receiving_message {
             // 阻塞接收消息
-            if let Ok(request) = rx.recv() {
+            if let Ok(request) = chat_rx.recv() {
                 match request {
                     ChatType::Simple { message } => {
                         match self.gemini.as_mut().unwrap().send_simple_message(message) {
@@ -470,10 +473,15 @@ impl UI {
                                     self.chat_item_list.selected_conversation += 1;
                                 }
                                 // 如果标题为空，则总结标题
-                                if self.title.is_empty() {
+                                if self.title.is_empty() && !self.gen_title_ing {
+                                    self.gen_title_ing = true;
+                                    let key = self.gemini.clone().unwrap().key.clone();
+                                    let response = response.clone();
                                     // 总结标题
-                                    let title = self.summary_by_gemini(response.clone());
-                                    self.title = title;
+                                    thread::spawn(move || {
+                                        let title = summary_by_gemini(key, response);
+                                        let _ = title_rx.send(title);
+                                    });
                                 }
                                 // 推送用户发送的消息保存到数据库
                                 let chat_message = self.chat_show.chat_history.pop().unwrap();
@@ -528,10 +536,15 @@ impl UI {
                                     self.chat_item_list.selected_conversation += 1;
                                 }
                                 // 如果标题为空，则总结标题
-                                if self.title.is_empty() {
+                                if self.title.is_empty() && !self.gen_title_ing {
+                                    self.gen_title_ing = true;
+                                    let key = self.gemini.clone().unwrap().key.clone();
+                                    let response = response.clone();
                                     // 总结标题
-                                    let title = self.summary_by_gemini(response.clone());
-                                    self.title = title;
+                                    thread::spawn(move || {
+                                        let title = summary_by_gemini(key, response);
+                                        let _ = title_rx.send(title);
+                                    });
                                 }
                                 // 推送用户发送的消息保存到数据库
                                 let chat_message = self.chat_show.chat_history.pop().unwrap();
@@ -594,7 +607,7 @@ impl UI {
 
             match self.focus_component {
                 // 当聚焦于输入框时，处理输入
-                MainFocusComponent::InputField => self.handle_input_key_event(key, tx),
+                MainFocusComponent::InputField => self.handle_input_key_event(key, chat_tx),
                 // 当聚焦于新建聊天按钮时，处理输入
                 MainFocusComponent::NewChatButton => self.handle_new_chat_key_event(key),
                 // 当聚焦于聊天列表时，处理输入
@@ -955,5 +968,16 @@ impl UI {
             // 滚动到最新的一条消息
             self.chat_show.scroll_offset = self.chat_show.chat_history_area_height;
         }
+    }
+}
+
+/// 通过纯净的 Gemini API 获取对话摘要
+fn summary_by_gemini(key: String, message: String) -> String {
+    let mut pure_gemini = Gemini::new(key, LanguageModel::Gemini1_5Flash);
+    pure_gemini.set_system_instruction("请给我概括一下这段文字内容，不包含任意标点符号，不大于15字。".into());
+    if let Ok((s, _)) = pure_gemini.send_simple_message(message) {
+        s
+    } else {
+        "".into()
     }
 }

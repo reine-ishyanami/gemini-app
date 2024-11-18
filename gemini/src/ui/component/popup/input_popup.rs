@@ -32,6 +32,11 @@ impl InputPopup {
         }
     }
 
+    pub fn set_size(&mut self, width: usize, height: usize) {
+        self.width = width;
+        self.height = height;
+    }
+
     // 保存
     pub fn save(&mut self) -> String {
         // TODO: 保存输入内容
