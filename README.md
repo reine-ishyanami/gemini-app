@@ -91,3 +91,7 @@ This is a terminal command-line tool for interacting with the Gemini API, provid
 | `Home`   | Move cursor to the beginning of the line |
 | `End`    | Move cursor to the end of the line |
 | `Character Key` | Input character        |
+
+## Startup Window
+
+![Startup](https://github.com/reine-ishyanami/gemini-tui/blob/main/picture/startup.png)

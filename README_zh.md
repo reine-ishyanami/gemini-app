@@ -91,3 +91,7 @@
 | `Home` | 光标移动到行首 |
 | `End` | 光标移动到行尾 |
 | `字符键` | 输入字符 |
+
+## 启动界面
+
+![Startup](https://github.com/reine-ishyanami/gemini-tui/blob/main/picture/startup.png)
